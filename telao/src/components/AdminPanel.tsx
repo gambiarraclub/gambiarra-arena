@@ -10,11 +10,14 @@ interface Session {
 interface Round {
   id: string;
   sessionId: string;
+  index: number;
   prompt: string;
   maxTokens: number;
   temperature: number;
-  status: string;
-  createdAt: string;
+  deadlineMs: number;
+  startedAt: string | null;
+  endedAt: string | null;
+  createdAt?: string;
 }
 
 export function AdminPanel() {
@@ -22,6 +25,7 @@ export function AdminPanel() {
   const [rounds, setRounds] = useState<Round[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sessionPin, setSessionPin] = useState<string | null>(null);
 
   // Form states
   const [newPrompt, setNewPrompt] = useState('');
@@ -29,10 +33,31 @@ export function AdminPanel() {
   const [temperature, setTemperature] = useState(0.7);
   const [deadlineMs, setDeadlineMs] = useState(120000);
 
-  const API_BASE = 'http://localhost:3000';
+  // Predefined prompt templates
+  const promptTemplates = [
+    'Escreva uma poesia em métrica de xote pernambucano sobre IA',
+    'Conte uma história curta de ficção científica sobre robôs',
+    'Explique o conceito de entropia de forma criativa',
+    'Escreva um diálogo entre dois personagens históricos',
+    'Crie uma receita maluca com ingredientes inusitados',
+  ];
+
+  // Compute round status based on startedAt/endedAt
+  const getRoundStatus = (round: Round): 'pending' | 'active' | 'completed' => {
+    if (round.endedAt) return 'completed';
+    if (round.startedAt) return 'active';
+    return 'pending';
+  };
+
+  const API_BASE = '/api';
 
   useEffect(() => {
     loadSession();
+    // Load PIN from localStorage if exists
+    const savedPin = localStorage.getItem('gambiarra_session_pin');
+    if (savedPin) {
+      setSessionPin(savedPin);
+    }
   }, []);
 
   const loadSession = async () => {
@@ -41,14 +66,14 @@ export function AdminPanel() {
       if (response.ok) {
         const data = await response.json();
         setSession(data);
-        loadRounds(data.id);
+        loadRounds();
       }
     } catch (err) {
       console.error('Error loading session:', err);
     }
   };
 
-  const loadRounds = async (sessionId: string) => {
+  const loadRounds = async () => {
     try {
       const response = await fetch(`${API_BASE}/session`);
       if (response.ok) {
@@ -67,16 +92,25 @@ export function AdminPanel() {
     try {
       const response = await fetch(`${API_BASE}/session`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pinLength: 6 })
       });
       if (response.ok) {
         const data = await response.json();
         setSession(data);
+        setSessionPin(data.pin);
+        // Save PIN to localStorage
+        localStorage.setItem('gambiarra_session_pin', data.pin);
+        localStorage.setItem('gambiarra_session_id', data.session_id);
         alert(`Sessão criada! PIN: ${data.pin}`);
+        loadSession(); // Reload to get full session data
       } else {
-        setError('Erro ao criar sessão');
+        const errorData = await response.text();
+        console.error('Create session error:', errorData);
+        setError(`Erro ao criar sessão: ${errorData}`);
       }
     } catch (err) {
+      console.error('Create session exception:', err);
       setError('Erro de conexão');
     } finally {
       setLoading(false);
@@ -100,7 +134,6 @@ export function AdminPanel() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          sessionId: session.id,
           prompt: newPrompt,
           maxTokens,
           temperature,
@@ -112,9 +145,11 @@ export function AdminPanel() {
         const data = await response.json();
         setRounds([...rounds, data]);
         setNewPrompt('');
-        alert('Rodada criada com sucesso!');
+        alert(`Rodada ${data.index} criada com sucesso!`);
+        loadSession(); // Refresh to get updated rounds list
       } else {
-        setError('Erro ao criar rodada');
+        const errorText = await response.text();
+        setError(`Erro ao criar rodada: ${errorText}`);
       }
     } catch (err) {
       setError('Erro de conexão');
@@ -145,13 +180,14 @@ export function AdminPanel() {
     }
   };
 
-  const stopRound = async () => {
+  const stopRound = async (roundId: string) => {
     setLoading(true);
     setError(null);
     try {
       const response = await fetch(`${API_BASE}/rounds/stop`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roundId })
       });
       if (response.ok) {
         alert('Rodada parada!');
@@ -179,12 +215,47 @@ export function AdminPanel() {
 
         {/* Session Section */}
         <div className="bg-gray-800 rounded-lg p-6 mb-6">
-          <h2 className="text-2xl font-bold mb-4">Sessão</h2>
+          <h2 className="text-2xl font-bold mb-4">Sessão Ativa</h2>
           {session ? (
             <div>
-              <p className="mb-2"><strong>ID:</strong> {session.id}</p>
-              <p className="mb-2"><strong>PIN:</strong> <span className="text-green-400 text-2xl font-mono">{session.pin}</span></p>
-              <p className="mb-2"><strong>Status:</strong> {session.status}</p>
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                  <p className="text-sm text-gray-400 mb-1">PIN da Sessão</p>
+                  {sessionPin ? (
+                    <p className="text-green-400 text-4xl font-mono font-bold">{sessionPin}</p>
+                  ) : (
+                    <div>
+                      <p className="text-yellow-400 text-sm mb-2">⚠️ PIN não disponível (sessão criada antes)</p>
+                      <button
+                        onClick={createSession}
+                        disabled={loading}
+                        className="bg-yellow-600 hover:bg-yellow-700 px-4 py-2 rounded text-sm font-bold disabled:opacity-50"
+                      >
+                        Criar Nova Sessão para ver PIN
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <p className="text-sm text-gray-400 mb-1">Session ID</p>
+                  <p className="text-gray-300 text-sm font-mono break-all">{session.id}</p>
+                  <p className="text-sm text-gray-400 mt-2">Status: <span className="text-green-400">{session.status}</span></p>
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-4 p-4 bg-gray-700 rounded">
+                <div className="text-center">
+                  <p className="text-3xl font-bold text-primary">{rounds.length}</p>
+                  <p className="text-sm text-gray-400">Rodadas Criadas</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-3xl font-bold text-green-400">{rounds.filter(r => getRoundStatus(r) === 'active').length}</p>
+                  <p className="text-sm text-gray-400">Em Andamento</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-3xl font-bold text-gray-400">{rounds.filter(r => getRoundStatus(r) === 'completed').length}</p>
+                  <p className="text-sm text-gray-400">Concluídas</p>
+                </div>
+              </div>
             </div>
           ) : (
             <div>
@@ -214,6 +285,18 @@ export function AdminPanel() {
                   rows={4}
                   placeholder="Digite o desafio para os participantes..."
                 />
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <span className="text-sm text-gray-400">Sugestões:</span>
+                  {promptTemplates.map((template, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => setNewPrompt(template)}
+                      className="text-xs bg-gray-600 hover:bg-gray-500 px-2 py-1 rounded"
+                    >
+                      {template.substring(0, 30)}...
+                    </button>
+                  ))}
+                </div>
               </div>
               <div className="grid grid-cols-3 gap-4">
                 <div>
@@ -262,7 +345,7 @@ export function AdminPanel() {
             <h2 className="text-2xl font-bold">Rodadas</h2>
             {session && (
               <button
-                onClick={() => loadRounds(session.id)}
+                onClick={loadRounds}
                 disabled={loading}
                 className="bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded text-sm font-bold disabled:opacity-50"
               >
@@ -274,24 +357,41 @@ export function AdminPanel() {
             <p className="text-gray-400">Nenhuma rodada criada ainda</p>
           ) : (
             <div className="space-y-4">
-              {rounds.map((round) => (
+              {rounds
+                .sort((a, b) => b.index - a.index) // Most recent first
+                .map((round) => {
+                const status = getRoundStatus(round);
+                return (
                 <div key={round.id} className="bg-gray-700 p-4 rounded">
                   <div className="mb-3">
-                    <p className="text-sm text-gray-400">ID: {round.id}</p>
-                    <p className="font-bold text-lg mt-1">{round.prompt}</p>
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="text-sm text-gray-400">Rodada #{round.index} - ID: {round.id}</p>
+                        <p className="font-bold text-lg mt-1">{round.prompt}</p>
+                      </div>
+                      <span className={`px-3 py-1 rounded text-xs font-bold ${
+                        status === 'active' ? 'bg-green-600' :
+                        status === 'pending' ? 'bg-yellow-600' :
+                        'bg-gray-600'
+                      }`}>{status.toUpperCase()}</span>
+                    </div>
                   </div>
                   <div className="grid grid-cols-4 gap-2 text-sm mb-3">
-                    <p><strong>Status:</strong> <span className={
-                      round.status === 'active' ? 'text-green-400' :
-                      round.status === 'pending' ? 'text-yellow-400' :
-                      'text-gray-400'
-                    }>{round.status}</span></p>
                     <p><strong>Tokens:</strong> {round.maxTokens}</p>
                     <p><strong>Temp:</strong> {round.temperature}</p>
-                    <p><strong>Deadline:</strong> {round.deadlineMs || deadlineMs}ms</p>
+                    <p><strong>Deadline:</strong> {(round.deadlineMs / 1000).toFixed(0)}s</p>
+                    <p><strong>Index:</strong> {round.index}</p>
                   </div>
+                  {round.startedAt && (
+                    <div className="text-xs text-gray-400 mb-3">
+                      <p>Iniciada: {new Date(round.startedAt).toLocaleString('pt-BR')}</p>
+                      {round.endedAt && (
+                        <p>Finalizada: {new Date(round.endedAt).toLocaleString('pt-BR')}</p>
+                      )}
+                    </div>
+                  )}
                   <div className="flex gap-2">
-                    {round.status === 'pending' && (
+                    {status === 'pending' && (
                       <button
                         onClick={() => startRound(round.id)}
                         disabled={loading}
@@ -300,21 +400,22 @@ export function AdminPanel() {
                         ▶️ Iniciar Rodada
                       </button>
                     )}
-                    {round.status === 'active' && (
+                    {status === 'active' && (
                       <button
-                        onClick={stopRound}
+                        onClick={() => stopRound(round.id)}
                         disabled={loading}
                         className="bg-red-600 hover:bg-red-700 px-4 py-2 rounded text-sm font-bold disabled:opacity-50"
                       >
                         ⏹️ Parar Rodada
                       </button>
                     )}
-                    {round.status === 'completed' && (
-                      <span className="text-gray-400 px-4 py-2">✅ Concluída</span>
+                    {status === 'completed' && (
+                      <span className="text-green-400 px-4 py-2 text-sm">✅ Concluída</span>
                     )}
                   </div>
                 </div>
-              ))}
+              );
+              })}
             </div>
           )}
         </div>
