@@ -320,10 +320,22 @@ Você verá **EM TEMPO REAL**:
 
 ## 📊 Passo 10: Ver Placar e Exportar (Opcional)
 
-**No terminal**, rode:
+**Opção 1: Visualizar no telão (recomendado)**
+
+Abra uma nova aba no navegador:
+- http://localhost:5173?view=scoreboard
+
+Você verá:
+- 🥇🥈🥉 Pódio com as 3 melhores posições
+- Média de votos e total de pontos de cada participante
+- Número de votos recebidos
+- Métricas de performance (tokens e TPS)
+- Atualização automática a cada 3 segundos
+
+**Opção 2: Via API (linha de comando)**
 
 ```bash
-# Ver placar
+# Ver placar em JSON
 curl http://localhost:3000/scoreboard | jq
 
 # Exportar CSV

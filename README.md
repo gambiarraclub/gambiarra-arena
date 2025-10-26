@@ -97,7 +97,10 @@ pnpm dev
 
 Isso iniciará:
 - Servidor na porta 3000 (http://localhost:3000)
-- Telão na porta 5173 (http://localhost:5173)
+- Telão na porta 5173:
+  - Arena: http://localhost:5173
+  - Votação: http://localhost:5173?view=voting
+  - Placar: http://localhost:5173?view=scoreboard
 
 ### Rodando uma Sessão Completa
 
@@ -184,7 +187,10 @@ curl http://localhost:3000/export.csv > resultados.csv
 docker compose up --build
 
 # Servidor: http://localhost:3000
-# Telão: http://localhost:5173
+# Telão:
+#   - Arena: http://localhost:5173
+#   - Votação: http://localhost:5173?view=voting
+#   - Placar: http://localhost:5173?view=scoreboard
 ```
 
 ## Estrutura do Projeto
