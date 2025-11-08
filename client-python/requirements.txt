@@ -1,0 +1,5 @@
+# Gambiarra LLM Club Client - Python Dependencies
+# Install with: pip install -r requirements.txt
+
+websockets>=12.0
+aiohttp>=3.9.0
