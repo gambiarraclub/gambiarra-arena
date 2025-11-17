@@ -38,11 +38,12 @@ COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
 COPY server/package.json ./server/
 
 # Install production dependencies only
-RUN pnpm install --prod --frozen-lockfile --filter @gambiarra/server...
+RUN pnpm install --frozen-lockfile --filter @gambiarra/server...
 
 # Copy built files, Prisma schema, and generated Prisma Client from builder
 COPY --from=builder /monorepo/server/dist ./server/dist
 COPY --from=builder /monorepo/server/prisma ./server/prisma
+COPY --from=builder /monorepo/server/src ./server/src
 COPY --from=builder /monorepo/node_modules/.pnpm/@prisma+client@5.22.0_prisma@5.22.0/node_modules/.prisma ./node_modules/.pnpm/@prisma+client@5.22.0_prisma@5.22.0/node_modules/.prisma
 
 # Create data directory
@@ -55,4 +56,4 @@ WORKDIR /monorepo/server
 EXPOSE 3000
 
 # Run migrations and start
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/index.js"]
+CMD ["sh", "-c", "pnpx prisma migrate deploy && pnpm seed && pnpm dev && node dist/index.js"]

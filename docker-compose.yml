@@ -3,6 +3,7 @@ services:
     build:
       context: .
       dockerfile: ./server/Dockerfile
+    container_name: "gambiarra-server"
     ports:
       - "3000:3000"
     environment:
@@ -14,16 +15,17 @@ services:
     volumes:
       - server-data:/monorepo/server/data
     networks:
-      - gambiarra-net
+      - gambiarra-network
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 30s
+    # healthcheck:
+    #   test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/health"]
+    #   interval: 10s
+    #   timeout: 5s
+    #   retries: 3
+    #   start_period: 30s
 
   telao:
+    container_name: "gambiarra-telao"
     build:
       context: .
       dockerfile: ./telao/Dockerfile
@@ -33,15 +35,14 @@ services:
     ports:
       - "5173:80"
     depends_on:
-      server:
-        condition: service_healthy
+      - server 
     networks:
-      - gambiarra-net
+      - gambiarra-network
     restart: unless-stopped
 
 volumes:
   server-data:
 
 networks:
-  gambiarra-net:
+  gambiarra-network:
     driver: bridge
