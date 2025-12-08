@@ -57,8 +57,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `src/net/ws.ts`: WebSocket client with reconnection logic
 
 **Telão (`telao/`):**
-- `src/components/Arena.tsx`: Main display with participant grid
+- `src/components/Arena.tsx`: Main display with participant grid (supports SVG rendering mode)
 - `src/components/Voting.tsx`: Voting interface (accessible via QR code)
+- URL views: `?view=voting` for voting, `?view=scoreboard` for scoreboard
 
 ## Common Development Commands
 
@@ -66,6 +67,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # Root
 pnpm install          # Install all workspace dependencies
 pnpm dev              # Start server + telao in dev mode
+pnpm build            # Build all workspaces
 pnpm simulate         # Run 5 simulated clients
 pnpm test             # Run all tests
 
@@ -73,8 +75,10 @@ pnpm test             # Run all tests
 cd server
 pnpm db:migrate       # Run database migrations
 pnpm db:generate      # Generate Prisma Client
+pnpm db:studio        # Open Prisma Studio GUI
 pnpm seed             # Seed with test data (PIN: 123456)
 pnpm dev              # Start server with hot reload
+pnpm test:coverage    # Run tests with coverage
 
 # Client TypeScript
 cd client-typescript
@@ -84,14 +88,15 @@ pnpm dev -- --url ws://localhost:3000/ws --pin 123456 \
 # Telão
 cd telao
 pnpm dev              # Start Vite dev server on port 5173
+pnpm lint             # Run ESLint
 ```
 
 ## Database Schema
 
 - **Session**: Contains `pinHash` (bcrypt), `status` (active/ended)
 - **Participant**: Links to Session, stores `nickname`, `runner`, `model`
-- **Round**: Contains `prompt`, `maxTokens`, `temperature`, `deadlineMs`, `seed`
-- **Metrics**: Stores `tokens`, `latencyFirstTokenMs`, `durationMs`, `tpsAvg` per participant/round
+- **Round**: Contains `prompt`, `maxTokens`, `temperature`, `deadlineMs`, `seed`, `svgMode`
+- **Metrics**: Stores `tokens`, `latencyFirstTokenMs`, `durationMs`, `tpsAvg`, `generatedContent` per participant/round
 - **Vote**: Links voter (hashed) to participant with `score` (1-5)
 
 ## Message Protocols
@@ -108,17 +113,31 @@ All messages validated with Zod schemas in `server/src/ws/schemas.ts`.
 - `complete`: Final metrics after generation completes
 - `error`: Client-side error reporting
 
+**Telão → Server:**
+- `telao_register`: Telão client registration (optional `view` field)
+- `vote`: Submit vote with `voter_id`, `participant_id`, and `score` (1-5)
+
 ## Testing Strategy
 
 - **Unit tests**: Schema validation (`server/src/ws/schemas.test.ts`), runner logic (`client-typescript/src/runners/mock.test.ts`)
 - **Integration**: Simulation script connects 5 clients and validates token sequencing
 - **Manual**: Use `pnpm seed` + `pnpm simulate` for end-to-end validation
 
+**Running single tests:**
+```bash
+# Run specific test file
+pnpm --filter @gambiarra/server test src/ws/schemas.test.ts
+
+# Run tests matching pattern
+pnpm --filter @gambiarra/server test -t "RegisterMessage"
+```
+
 ## Configuration
 
 Server config via environment variables (see `server/.env.example`):
 - `PORT`, `HOST`: Server binding
 - `DATABASE_URL`: SQLite file path
+- `MDNS_HOSTNAME`: mDNS hostname for local network discovery
 - `WS_COMPRESSION`: Disabled by default for LAN performance
 - `RATE_LIMIT_MAX`: Requests per IP per time window
 
@@ -133,6 +152,8 @@ Server config via environment variables (see `server/.env.example`):
 4. **Vote Privacy**: Voter IDs are SHA-256 hashed before storage.
 
 5. **Scoreboard Calculation**: Currently `total_score = avgScore * voteCount`. Customize in `server/src/core/votes.ts:getScoreboard()`.
+
+6. **SVG Mode**: Rounds can be created with `svgMode: true` to render participant outputs as SVG images in the telão.
 
 ## Adding New Features
 
