@@ -58,6 +58,7 @@ function shuffleArray<T>(array: T[]): T[] {
 
 function Voting() {
   const [round, setRound] = useState<Round | null>(null);
+  const [currentRoundId, setCurrentRoundId] = useState<string | null>(null); // Track current round to detect changes
   const [responses, setResponses] = useState<Response[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [votedParticipants, setVotedParticipants] = useState<Map<string, number>>(new Map());
@@ -91,6 +92,19 @@ function Voting() {
         return;
       }
 
+      // Check if round changed - if so, reset all state
+      setCurrentRoundId((prevRoundId) => {
+        if (prevRoundId !== null && prevRoundId !== latestRound.id) {
+          // Round changed! Reset everything
+          console.log('Round changed from', prevRoundId, 'to', latestRound.id);
+          setResponses([]);
+          setCurrentIndex(0);
+          setVotedParticipants(new Map());
+          setSvgMode(false);
+        }
+        return latestRound.id;
+      });
+
       setRound(latestRound);
 
       // If voting is open, fetch responses
@@ -98,15 +112,21 @@ function Voting() {
         const responsesRes = await fetch(`/api/rounds/${latestRound.id}/responses`);
         if (responsesRes.ok) {
           const data = await responsesRes.json();
+          // Always update svgMode
           setSvgMode(data.svgMode);
 
-          // Shuffle responses only once when loading
-          if (responses.length === 0) {
-            setResponses(shuffleArray(data.responses));
-          }
+          // Shuffle responses only once when loading OR when round changed
+          // Use functional update to check current state
+          setResponses((prevResponses) => {
+            // If no responses yet, load and shuffle them
+            if (prevResponses.length === 0 && data.responses.length > 0) {
+              return shuffleArray(data.responses);
+            }
+            return prevResponses;
+          });
         }
 
-        // Fetch already voted participants
+        // Fetch already voted participants for THIS round
         const votedRes = await fetch(`/api/votes/mine?roundId=${latestRound.id}&voterId=${voterId}`);
         if (votedRes.ok) {
           const voted = await votedRes.json();
@@ -122,7 +142,7 @@ function Voting() {
       setError('Erro ao carregar dados');
       setLoading(false);
     }
-  }, [voterId, responses.length]);
+  }, [voterId]);
 
   useEffect(() => {
     fetchData();

@@ -78,11 +78,24 @@ function Arena() {
     fetchSession();
     const sessionInterval = setInterval(fetchSession, 2000);
 
-    // Fetch current round
+    // Fetch current round (or latest round if none active)
     const fetchRound = () => {
+      // First try to get active round
       fetch('/api/rounds/current')
-        .then((res) => res.json())
+        .then((res) => {
+          if (res.ok) return res.json();
+          // If no active round, fetch from session to get latest round
+          return fetch('/api/session')
+            .then((sessionRes) => sessionRes.json())
+            .then((sessionData) => {
+              const rounds = sessionData.rounds || [];
+              // Get the most recent round (highest index)
+              const latestRound = rounds.sort((a: Round, b: Round) => b.index - a.index)[0];
+              return latestRound || null;
+            });
+        })
         .then((data) => {
+          if (!data) return;
           setCurrentRound(data);
           // Initialize participant states from live tokens
           if (data.liveTokens) {
@@ -100,12 +113,24 @@ function Arena() {
                   };
                 } else {
                   // Existing participant - preserve isGenerating if already false
+                  // Also preserve content if new content is empty but we have existing content
+                  const newTokens = tokens as string[];
                   newStates[pid] = {
-                    tokens: (tokens as string[]).length,
+                    tokens: newTokens.length || existingState.tokens,
                     isGenerating: existingState.isGenerating === false ? false : !data.endedAt,
-                    content: tokens as string[],
+                    content: newTokens.length > 0 ? newTokens : existingState.content,
                   };
                 }
+              }
+              return newStates;
+            });
+          }
+          // If round ended and we have no liveTokens, preserve existing states but mark as not generating
+          if (data.endedAt && !data.liveTokens) {
+            setParticipantStates((prevStates) => {
+              const newStates: Record<string, ParticipantState> = {};
+              for (const [pid, state] of Object.entries(prevStates)) {
+                newStates[pid] = { ...state, isGenerating: false };
               }
               return newStates;
             });
