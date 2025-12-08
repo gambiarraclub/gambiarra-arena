@@ -89,7 +89,7 @@ export const VoteMessageSchema = z.object({
   round: z.number(),
   voter_id: z.string(),
   participant_id: z.string(),
-  score: z.number().min(1).max(5),
+  score: z.number().min(0).max(5),
 });
 
 // Type exports

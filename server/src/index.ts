@@ -7,6 +7,7 @@ import { WebSocketHub } from './ws/hub.js';
 import { RoundManager } from './core/rounds.js';
 import { VoteManager } from './core/votes.js';
 import { MetricsManager } from './core/metrics.js';
+import { EventLogger } from './core/eventlog.js';
 import { setupRoutes } from './http/routes.js';
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
@@ -69,9 +70,10 @@ await app.register(websocket, {
 });
 
 // Initialize managers
-const hub = new WebSocketHub(prisma, app.log);
-const roundManager = new RoundManager(prisma, hub, app.log);
-const voteManager = new VoteManager(prisma, app.log);
+const eventLogger = new EventLogger(prisma, app.log);
+const hub = new WebSocketHub(prisma, app.log, eventLogger);
+const roundManager = new RoundManager(prisma, hub, app.log, eventLogger);
+const voteManager = new VoteManager(prisma, app.log, eventLogger);
 const metricsManager = new MetricsManager(prisma);
 
 // WebSocket route
@@ -82,7 +84,7 @@ app.register(async (app) => {
 });
 
 // HTTP routes
-await setupRoutes(app, hub, roundManager, voteManager, metricsManager);
+await setupRoutes(app, hub, roundManager, voteManager, metricsManager, eventLogger);
 
 // Graceful shutdown
 const shutdown = async () => {

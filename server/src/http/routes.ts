@@ -5,6 +5,7 @@ import { nanoid } from 'nanoid';
 import { RoundManager } from '../core/rounds.js';
 import { VoteManager } from '../core/votes.js';
 import { MetricsManager } from '../core/metrics.js';
+import { EventLogger } from '../core/eventlog.js';
 import type { WebSocketHub } from '../ws/hub.js';
 
 const CreateSessionSchema = z.object({
@@ -31,7 +32,19 @@ const StopRoundSchema = z.object({
 const CastVoteSchema = z.object({
   roundId: z.string(),
   participantId: z.string(),
-  score: z.number().min(1).max(5),
+  score: z.number().min(0).max(5),
+  voterId: z.string().optional(), // Optional: use localStorage ID from client
+  responseTime: z.number().optional(), // ms from viewing response to voting
+  userAgent: z.string().optional(), // browser/device info
+});
+
+const RoundIdSchema = z.object({
+  roundId: z.string(),
+});
+
+const GetVotedSchema = z.object({
+  roundId: z.string(),
+  voterId: z.string(),
 });
 
 const KickParticipantSchema = z.object({
@@ -43,7 +56,8 @@ export async function setupRoutes(
   hub: WebSocketHub,
   roundManager: RoundManager,
   voteManager: VoteManager,
-  metricsManager: MetricsManager
+  metricsManager: MetricsManager,
+  eventLogger?: EventLogger
 ) {
   // Health check
   app.get('/health', async () => {
@@ -65,7 +79,7 @@ export async function setupRoutes(
       return reply.code(404).send({ error: 'No active session' });
     }
 
-    // Don't return PIN hash
+    // Don't return PIN hash, but keep plain PIN for admin
     const { pinHash, ...sessionData } = session;
 
     return sessionData;
@@ -99,22 +113,41 @@ export async function setupRoutes(
 
   // Get scoreboard
   app.get('/scoreboard', async (request, reply) => {
-    const session = await app.prisma.session.findFirst({
-      where: { status: 'active' },
-      orderBy: { createdAt: 'desc' },
-    });
+    const query = request.query as { roundId?: string };
 
-    if (!session) {
-      return reply.code(404).send({ error: 'No active session' });
+    let roundId = query.roundId;
+
+    if (!roundId) {
+      const session = await app.prisma.session.findFirst({
+        where: { status: 'active' },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      if (!session) {
+        return reply.code(404).send({ error: 'No active session' });
+      }
+
+      // Try to get the most recently ended round first, then active round
+      let round = await app.prisma.round.findFirst({
+        where: {
+          sessionId: session.id,
+          endedAt: { not: null },
+        },
+        orderBy: { index: 'desc' },
+      });
+
+      if (!round) {
+        round = await roundManager.getCurrentRound(session.id);
+      }
+
+      if (!round) {
+        return reply.code(404).send({ error: 'No round found' });
+      }
+
+      roundId = round.id;
     }
 
-    const round = await roundManager.getCurrentRound(session.id);
-
-    if (!round) {
-      return reply.code(404).send({ error: 'No active round' });
-    }
-
-    const scoreboard = await voteManager.getScoreboard(round.id);
+    const scoreboard = await voteManager.getScoreboard(roundId);
 
     return scoreboard;
   });
@@ -165,6 +198,14 @@ export async function setupRoutes(
       .padStart(body.pinLength, '0');
     const pinHash = await bcrypt.hash(pin, 10);
 
+    // Disconnect all participants from previous session
+    const disconnectedCount = hub.disconnectAllParticipants('Nova sessão criada. Reconecte com o novo PIN.');
+
+    // Mark all participants as disconnected in the database
+    await app.prisma.participant.updateMany({
+      data: { connected: false },
+    });
+
     // End previous active sessions
     await app.prisma.session.updateMany({
       where: { status: 'active' },
@@ -174,17 +215,29 @@ export async function setupRoutes(
     // Create new session
     const session = await app.prisma.session.create({
       data: {
-        pinHash,
+        pin,     // Store plain PIN for admin display
+        pinHash, // Store hash for verification
         status: 'active',
       },
     });
 
-    app.log.info({ sessionId: session.id, pin }, 'Session created');
+    app.log.info({ sessionId: session.id, pin, disconnectedCount }, 'Session created');
+
+    // Log event for research
+    await eventLogger?.log({
+      sessionId: session.id,
+      eventType: 'session_created',
+      actorType: 'admin',
+      targetType: 'session',
+      targetId: session.id,
+      metadata: { disconnectedPreviousParticipants: disconnectedCount },
+    });
 
     return {
       session_id: session.id,
       pin, // Only return PIN on creation
       created_at: session.createdAt,
+      disconnected_participants: disconnectedCount,
     };
   });
 
@@ -231,24 +284,87 @@ export async function setupRoutes(
   app.post('/votes', async (request, reply) => {
     const body = CastVoteSchema.parse(request.body);
 
-    // Use IP address as voter ID if not provided
-    const voterId = request.ip;
+    // Use provided voterId or fall back to IP
+    const voterId = body.voterId || request.ip;
+    // Get user agent from request headers if not provided
+    const userAgent = body.userAgent || request.headers['user-agent'];
 
-    const vote = await voteManager.castVote({
-      roundId: body.roundId,
-      voterId,
-      participantId: body.participantId,
-      score: body.score,
-    });
+    try {
+      const vote = await voteManager.castVote({
+        roundId: body.roundId,
+        voterId,
+        participantId: body.participantId,
+        score: body.score,
+        responseTime: body.responseTime,
+        userAgent,
+      });
 
-    return vote;
+      return vote;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to cast vote';
+      return reply.code(400).send({ error: message });
+    }
   });
 
-  // Close voting
-  app.post('/votes/close', async (request, reply) => {
-    // This would typically disable voting for a round
-    // For now, we'll just return success
-    return { status: 'ok' };
+  // Get voted participants for a voter
+  app.get('/votes/mine', async (request, reply) => {
+    const query = GetVotedSchema.parse(request.query);
+
+    const votes = await voteManager.getVotedParticipants(query.roundId, query.voterId);
+
+    return votes;
+  });
+
+  // Close voting for a round
+  app.post('/rounds/:roundId/close-voting', async (request, reply) => {
+    const { roundId } = request.params as { roundId: string };
+
+    try {
+      const round = await roundManager.closeVoting(roundId);
+      return round;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to close voting';
+      return reply.code(400).send({ error: message });
+    }
+  });
+
+  // Start reveal ceremony
+  app.post('/rounds/:roundId/reveal', async (request, reply) => {
+    const { roundId } = request.params as { roundId: string };
+
+    try {
+      const round = await roundManager.startReveal(roundId);
+      return round;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to start reveal';
+      return reply.code(400).send({ error: message });
+    }
+  });
+
+  // Reveal next position
+  app.post('/rounds/:roundId/reveal-next', async (request, reply) => {
+    const { roundId } = request.params as { roundId: string };
+
+    try {
+      const round = await roundManager.revealNext(roundId);
+      return round;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to reveal next';
+      return reply.code(400).send({ error: message });
+    }
+  });
+
+  // Get responses for voting
+  app.get('/rounds/:roundId/responses', async (request, reply) => {
+    const { roundId } = request.params as { roundId: string };
+
+    try {
+      const responses = await voteManager.getRoundResponses(roundId);
+      return responses;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to get responses';
+      return reply.code(400).send({ error: message });
+    }
   });
 
   // Kick participant
@@ -260,5 +376,71 @@ export async function setupRoutes(
     });
 
     return { status: 'ok' };
+  });
+
+  // Export events as CSV for research
+  app.get('/export-events.csv', async (request, reply) => {
+    const session = await app.prisma.session.findFirst({
+      where: { status: 'active' },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!session) {
+      return reply.code(404).send({ error: 'No active session' });
+    }
+
+    const events = await app.prisma.eventLog.findMany({
+      where: { sessionId: session.id },
+      orderBy: { timestamp: 'asc' },
+    });
+
+    // Build CSV
+    const headers = ['id', 'timestamp', 'eventType', 'actorType', 'actorId', 'targetType', 'targetId', 'metadata'];
+    const rows = events.map((e) => [
+      e.id,
+      e.timestamp.toISOString(),
+      e.eventType,
+      e.actorType,
+      e.actorId || '',
+      e.targetType || '',
+      e.targetId || '',
+      e.metadata || '',
+    ].map((val) => `"${String(val).replace(/"/g, '""')}"`).join(','));
+
+    const csv = [headers.join(','), ...rows].join('\n');
+
+    reply.header('Content-Type', 'text/csv');
+    reply.header('Content-Disposition', `attachment; filename="events-${session.id}.csv"`);
+
+    return csv;
+  });
+
+  // Export all session data as JSON for research
+  app.get('/export-all.json', async (request, reply) => {
+    const session = await app.prisma.session.findFirst({
+      where: { status: 'active' },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        participants: true,
+        rounds: {
+          include: {
+            metrics: true,
+            votes: true,
+          },
+        },
+        events: {
+          orderBy: { timestamp: 'asc' },
+        },
+      },
+    });
+
+    if (!session) {
+      return reply.code(404).send({ error: 'No active session' });
+    }
+
+    reply.header('Content-Type', 'application/json');
+    reply.header('Content-Disposition', `attachment; filename="session-${session.id}-full.json"`);
+
+    return session;
   });
 }

@@ -10,6 +10,7 @@ import {
   ExtendedClientMessageSchema,
   type ExtendedClientMessage,
 } from './schemas.js';
+import type { EventLogger } from '../core/eventlog.js';
 
 interface ParticipantConnection {
   participantId: string;
@@ -24,10 +25,13 @@ export class WebSocketHub {
   private telaoConnections = new Map<string, WebSocket>();
   private heartbeatInterval: NodeJS.Timeout | null = null;
   private tokenBuffer = new Map<string, Map<number, string[]>>(); // participantId -> round -> tokens
+  private firstTokenTime = new Map<string, Map<number, Date>>(); // participantId -> round -> first token timestamp
+  private generationStartTime = new Map<string, Map<number, Date>>(); // participantId -> round -> start timestamp
 
   constructor(
     private prisma: PrismaClient,
-    private logger: FastifyBaseLogger
+    private logger: FastifyBaseLogger,
+    private eventLogger?: EventLogger
   ) {
     this.startHeartbeat();
   }
@@ -111,11 +115,12 @@ export class WebSocketHub {
       // Verify PIN
       const pinValid = await bcrypt.compare(message.pin, session.pinHash);
       if (!pinValid) {
-        ws.send(JSON.stringify({ type: 'error', message: 'Invalid PIN' }));
+        ws.send(JSON.stringify({ type: 'error', message: 'Invalid PIN.' }));
         return;
       }
 
       // Create or update participant
+      // IMPORTANT: Always update sessionId to move participant to current session
       const participantRecord = await this.prisma.participant.upsert({
         where: { id: message.participant_id },
         create: {
@@ -128,9 +133,11 @@ export class WebSocketHub {
           connected: true,
         },
         update: {
-          lastSeen: new Date(),
+          sessionId: session.id,  // Move to current session
+          nickname: message.nickname,
           runner: message.runner,
           model: message.model,
+          lastSeen: new Date(),
           connected: true,
         },
       });
@@ -148,6 +155,21 @@ export class WebSocketHub {
         { participantId: message.participant_id, sessionId: session.id },
         'Participant registered'
       );
+
+      // Log event for research
+      await this.eventLogger?.log({
+        sessionId: session.id,
+        eventType: 'participant_registered',
+        actorType: 'participant',
+        actorId: message.participant_id,
+        targetType: 'participant',
+        targetId: message.participant_id,
+        metadata: {
+          nickname: message.nickname,
+          runner: message.runner,
+          model: message.model,
+        },
+      });
 
       // Notify telao about the new/updated participant so UI can show immediately
       try {
@@ -175,6 +197,7 @@ export class WebSocketHub {
 
   private async handleToken(message: TokenMessage) {
     const participantKey = message.participant_id;
+    const now = new Date();
 
     if (!this.tokenBuffer.has(participantKey)) {
       this.tokenBuffer.set(participantKey, new Map());
@@ -196,6 +219,29 @@ export class WebSocketHub {
       return;
     }
 
+    // Track first token time for research
+    if (message.seq === 0) {
+      if (!this.firstTokenTime.has(participantKey)) {
+        this.firstTokenTime.set(participantKey, new Map());
+      }
+      this.firstTokenTime.get(participantKey)!.set(message.round, now);
+
+      // Log first token event
+      const session = await this.prisma.session.findFirst({
+        where: { status: 'active' },
+      });
+      if (session) {
+        await this.eventLogger?.log({
+          sessionId: session.id,
+          eventType: 'first_token_received',
+          actorType: 'participant',
+          actorId: participantKey,
+          targetType: 'round',
+          metadata: { round: message.round },
+        });
+      }
+    }
+
     tokens.push(message.content);
 
     // Broadcast to telao
@@ -211,15 +257,21 @@ export class WebSocketHub {
 
   private async handleComplete(message: CompleteMessage) {
     try {
+      const completionTime = new Date();
+
+      // Find round by index in the ACTIVE session only
       const round = await this.prisma.round.findFirst({
         where: {
           index: message.round,
+          session: {
+            status: 'active',
+          },
         },
         include: { session: true },
       });
 
       if (!round) {
-        this.logger.error({ round: message.round }, 'Round not found');
+        this.logger.error({ round: message.round }, 'Round not found in active session');
         return;
       }
 
@@ -231,6 +283,14 @@ export class WebSocketHub {
       const participantTokens = this.tokenBuffer.get(message.participant_id);
       const roundTokens = participantTokens?.get(message.round);
       const generatedContent = roundTokens ? roundTokens.join('') : null;
+
+      // Get first token timestamp for research
+      const firstTokenAt = this.firstTokenTime.get(message.participant_id)?.get(message.round);
+
+      // Calculate generation start time from first token minus latency
+      const generationStartedAt = firstTokenAt && message.latency_ms_first_token
+        ? new Date(firstTokenAt.getTime() - message.latency_ms_first_token)
+        : round.startedAt;
 
       await this.prisma.metrics.upsert({
         where: {
@@ -248,6 +308,9 @@ export class WebSocketHub {
           tpsAvg,
           modelInfo: message.model_info ? JSON.stringify(message.model_info) : null,
           generatedContent,
+          generationStartedAt,
+          generationEndedAt: completionTime,
+          firstTokenAt,
         },
         update: {
           tokens: message.tokens,
@@ -256,6 +319,9 @@ export class WebSocketHub {
           tpsAvg,
           modelInfo: message.model_info ? JSON.stringify(message.model_info) : null,
           generatedContent,
+          generationStartedAt,
+          generationEndedAt: completionTime,
+          firstTokenAt,
         },
       });
 
@@ -263,6 +329,23 @@ export class WebSocketHub {
         { participantId: message.participant_id, round: message.round, tokens: message.tokens },
         'Completion recorded'
       );
+
+      // Log generation completed event for research
+      await this.eventLogger?.log({
+        sessionId: round.sessionId,
+        eventType: 'generation_completed',
+        actorType: 'participant',
+        actorId: message.participant_id,
+        targetType: 'round',
+        targetId: round.id,
+        metadata: {
+          roundIndex: message.round,
+          tokens: message.tokens,
+          durationMs: message.duration_ms,
+          latencyFirstTokenMs: message.latency_ms_first_token,
+          tpsAvg,
+        },
+      });
 
       // Broadcast completion
       this.broadcastToTelao({
@@ -287,6 +370,16 @@ export class WebSocketHub {
         await this.prisma.participant.update({
           where: { id: conn.participantId },
           data: { lastSeen: new Date(), connected: false },
+        });
+
+        // Log disconnection event for research
+        await this.eventLogger?.log({
+          sessionId: conn.sessionId,
+          eventType: 'participant_disconnected',
+          actorType: 'participant',
+          actorId: conn.participantId,
+          targetType: 'participant',
+          targetId: conn.participantId,
         });
 
         // Notify telao (or any pollers) that participant updated
@@ -376,6 +469,41 @@ export class WebSocketHub {
     }
 
     return result;
+  }
+
+  /**
+   * Disconnect all participants (used when creating a new session)
+   */
+  disconnectAllParticipants(reason: string = 'Session ended') {
+    const count = this.connections.size;
+
+    for (const conn of this.connections.values()) {
+      try {
+        // Send disconnect message before closing
+        conn.ws.send(JSON.stringify({
+          type: 'error',
+          message: reason,
+          code: 'SESSION_ENDED'
+        }));
+        conn.ws.close();
+      } catch (error) {
+        this.logger.error({ error, participantId: conn.participantId }, 'Error disconnecting participant');
+      }
+    }
+
+    this.connections.clear();
+    this.tokenBuffer.clear();
+
+    this.logger.info({ count, reason }, 'Disconnected all participants');
+
+    return count;
+  }
+
+  /**
+   * Get count of connected participants
+   */
+  getConnectedCount(): number {
+    return this.connections.size;
   }
 
   cleanup() {

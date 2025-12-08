@@ -14,10 +14,13 @@ datasource db {
 model Session {
   id           String        @id @default(uuid())
   createdAt    DateTime      @default(now())
-  pinHash      String
+  endedAt      DateTime?     // When session was ended
+  pin          String        @default("000000") // Plain PIN for admin display
+  pinHash      String        // Hashed PIN for verification
   status       String        @default("active") // active, ended
   participants Participant[]
   rounds       Round[]
+  events       EventLog[]
 
   @@map("sessions")
 }
@@ -39,20 +42,22 @@ model Participant {
 }
 
 model Round {
-  id         String    @id @default(uuid())
-  sessionId  String
-  index      Int
-  prompt     String
-  maxTokens  Int       @default(400)
-  temperature Float    @default(0.8)
-  deadlineMs Int       @default(90000)
-  seed       Int?
-  svgMode    Boolean   @default(false)
-  startedAt  DateTime?
-  endedAt    DateTime?
-  session    Session   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  metrics    Metrics[]
-  votes      Vote[]
+  id            String    @id @default(uuid())
+  sessionId     String
+  index         Int
+  prompt        String
+  maxTokens     Int       @default(400)
+  temperature   Float     @default(0.8)
+  deadlineMs    Int       @default(90000)
+  seed          Int?
+  svgMode       Boolean   @default(false)
+  startedAt     DateTime?
+  endedAt       DateTime?
+  votingStatus  String    @default("closed") // closed, open, revealed
+  revealedCount Int       @default(0)        // number of positions revealed in award ceremony
+  session       Session   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  metrics       Metrics[]
+  votes         Vote[]
 
   @@unique([sessionId, index])
   @@map("rounds")
@@ -69,6 +74,10 @@ model Metrics {
   modelInfo             String?     // JSON string
   generatedContent      String?     // Full generated response
   createdAt             DateTime    @default(now())
+  // New detailed timestamps for research
+  generationStartedAt   DateTime?   // When participant started generating
+  generationEndedAt     DateTime?   // When participant finished generating
+  firstTokenAt          DateTime?   // When first token was received
   round                 Round       @relation(fields: [roundId], references: [id], onDelete: Cascade)
   participant           Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
 
@@ -83,9 +92,34 @@ model Vote {
   participantId String
   score         Int
   createdAt     DateTime    @default(now())
+  // New metrics for research
+  voteOrder     Int?        // Order in which this vote was cast (1st, 2nd, etc. for this voter)
+  responseTime  Int?        // Milliseconds from viewing response to voting
+  userAgent     String?     // Browser/device info
   round         Round       @relation(fields: [roundId], references: [id], onDelete: Cascade)
   participant   Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
 
   @@unique([roundId, voterHash, participantId])
   @@map("votes")
+}
+
+// New table for comprehensive event logging
+model EventLog {
+  id          String   @id @default(uuid())
+  sessionId   String?
+  timestamp   DateTime @default(now())
+  eventType   String   // session_created, session_ended, round_created, round_started, round_stopped,
+                       // voting_opened, voting_closed, reveal_started, position_revealed,
+                       // participant_connected, participant_disconnected, vote_cast, etc.
+  actorType   String   // admin, participant, voter, system
+  actorId     String?  // participant_id, voter_hash, or null for admin/system
+  targetType  String?  // session, round, participant, vote
+  targetId    String?  // ID of the target entity
+  metadata    String?  // JSON with additional context
+  session     Session? @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([eventType])
+  @@index([timestamp])
+  @@map("event_logs")
 }

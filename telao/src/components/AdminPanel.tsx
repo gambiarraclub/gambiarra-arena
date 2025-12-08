@@ -20,13 +20,25 @@ interface Round {
   svgMode: boolean;
   startedAt: string | null;
   endedAt: string | null;
+  votingStatus: 'closed' | 'open' | 'revealed';
+  revealedCount: number;
   createdAt?: string;
+}
+
+interface Participant {
+  id: string;
+  nickname: string;
+  connected: boolean;
+  runner: string;
+  model: string;
+  lastSeen: string;
 }
 
 export function AdminPanel() {
   const toast = useToast();
   const [session, setSession] = useState<Session | null>(null);
   const [rounds, setRounds] = useState<Round[]>([]);
+  const [participants, setParticipants] = useState<Participant[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sessionPin, setSessionPin] = useState<string | null>(null);
@@ -59,11 +71,11 @@ export function AdminPanel() {
 
   useEffect(() => {
     loadSession();
-    // Load PIN from localStorage if exists
-    const savedPin = localStorage.getItem('gambiarra_session_pin');
-    if (savedPin) {
-      setSessionPin(savedPin);
-    }
+    // Auto-refresh participants every 5 seconds
+    const interval = setInterval(() => {
+      loadRounds();
+    }, 5000);
+    return () => clearInterval(interval);
   }, []);
 
   const loadSession = async () => {
@@ -72,6 +84,10 @@ export function AdminPanel() {
       if (response.ok) {
         const data = await response.json();
         setSession(data);
+        // PIN now comes from the server, not localStorage
+        if (data.pin) {
+          setSessionPin(data.pin);
+        }
         loadRounds();
       }
     } catch (err) {
@@ -86,6 +102,7 @@ export function AdminPanel() {
         const data = await response.json();
         console.log('Session data:', data);
         setRounds(data.rounds || []);
+        setParticipants(data.participants || []);
       }
     } catch (err) {
       console.error('Error loading rounds:', err);
@@ -105,9 +122,6 @@ export function AdminPanel() {
         const data = await response.json();
         setSession(data);
         setSessionPin(data.pin);
-        // Save PIN to localStorage
-        localStorage.setItem('gambiarra_session_pin', data.pin);
-        localStorage.setItem('gambiarra_session_id', data.session_id);
         toast.success(`Sessão criada! PIN: ${data.pin}`);
         loadSession(); // Reload to get full session data
       } else {
@@ -197,10 +211,74 @@ export function AdminPanel() {
         body: JSON.stringify({ roundId })
       });
       if (response.ok) {
-        toast.success('Rodada parada!');
+        toast.success('Rodada parada! Votação aberta automaticamente.');
         loadSession();
       } else {
         setError('Erro ao parar rodada');
+      }
+    } catch (err) {
+      setError('Erro de conexão');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const closeVoting = async (roundId: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch(`${API_BASE}/rounds/${roundId}/close-voting`, {
+        method: 'POST',
+      });
+      if (response.ok) {
+        toast.success('Votação encerrada!');
+        loadSession();
+      } else {
+        const data = await response.json();
+        setError(data.error || 'Erro ao fechar votação');
+      }
+    } catch (err) {
+      setError('Erro de conexão');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const startReveal = async (roundId: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch(`${API_BASE}/rounds/${roundId}/reveal`, {
+        method: 'POST',
+      });
+      if (response.ok) {
+        toast.success('Premiação iniciada! Use o Scoreboard para ver.');
+        loadSession();
+      } else {
+        const data = await response.json();
+        setError(data.error || 'Erro ao iniciar premiação');
+      }
+    } catch (err) {
+      setError('Erro de conexão');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const revealNext = async (roundId: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch(`${API_BASE}/rounds/${roundId}/reveal-next`, {
+        method: 'POST',
+      });
+      if (response.ok) {
+        const data = await response.json();
+        toast.success(`Posição revelada! (${data.revealedCount} de ${participants.length})`);
+        loadSession();
+      } else {
+        const data = await response.json();
+        setError(data.error || 'Erro ao revelar próximo');
       }
     } catch (err) {
       setError('Erro de conexão');
@@ -229,20 +307,14 @@ export function AdminPanel() {
               <div className="grid grid-cols-2 gap-4 mb-4">
                 <div>
                   <p className="text-sm text-gray-400 mb-1">PIN da Sessão</p>
-                  {sessionPin ? (
-                    <p className="text-green-400 text-4xl font-mono font-bold">{sessionPin}</p>
-                  ) : (
-                    <div>
-                      <p className="text-yellow-400 text-sm mb-2">⚠️ PIN não disponível (sessão criada antes)</p>
-                      <button
-                        onClick={createSession}
-                        disabled={loading}
-                        className="bg-yellow-600 hover:bg-yellow-700 px-4 py-2 rounded text-sm font-bold disabled:opacity-50"
-                      >
-                        Criar Nova Sessão para ver PIN
-                      </button>
-                    </div>
-                  )}
+                  <p className="text-green-400 text-4xl font-mono font-bold">{sessionPin || '------'}</p>
+                  <button
+                    onClick={createSession}
+                    disabled={loading}
+                    className="mt-2 bg-yellow-600 hover:bg-yellow-700 px-3 py-1 rounded text-xs font-bold disabled:opacity-50"
+                  >
+                    🔄 Nova Sessão
+                  </button>
                 </div>
                 <div>
                   <p className="text-sm text-gray-400 mb-1">Session ID</p>
@@ -250,7 +322,7 @@ export function AdminPanel() {
                   <p className="text-sm text-gray-400 mt-2">Status: <span className="text-green-400">{session.status}</span></p>
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-4 p-4 bg-gray-700 rounded">
+              <div className="grid grid-cols-4 gap-4 p-4 bg-gray-700 rounded mb-4">
                 <div className="text-center">
                   <p className="text-3xl font-bold text-primary">{rounds.length}</p>
                   <p className="text-sm text-gray-400">Rodadas Criadas</p>
@@ -263,7 +335,38 @@ export function AdminPanel() {
                   <p className="text-3xl font-bold text-gray-400">{rounds.filter(r => getRoundStatus(r) === 'completed').length}</p>
                   <p className="text-sm text-gray-400">Concluídas</p>
                 </div>
+                <div className="text-center">
+                  <p className="text-3xl font-bold text-cyan-400">{participants.filter(p => p.connected).length}</p>
+                  <p className="text-sm text-gray-400">Conectados</p>
+                </div>
               </div>
+
+              {/* Connected Participants */}
+              {participants.length > 0 && (
+                <div className="bg-gray-700/50 rounded p-4">
+                  <h3 className="text-sm font-bold text-gray-400 mb-3">
+                    Participantes ({participants.filter(p => p.connected).length} online / {participants.length} total)
+                  </h3>
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                    {participants.map((p) => (
+                      <div
+                        key={p.id}
+                        className={`flex items-center gap-2 p-2 rounded text-sm ${
+                          p.connected ? 'bg-green-900/30 border border-green-700' : 'bg-gray-800/50 border border-gray-700'
+                        }`}
+                      >
+                        <span className={`w-2 h-2 rounded-full ${p.connected ? 'bg-green-500 animate-pulse' : 'bg-gray-500'}`} />
+                        <div className="flex-1 min-w-0">
+                          <p className={`font-bold truncate ${p.connected ? 'text-white' : 'text-gray-500'}`}>
+                            {p.nickname}
+                          </p>
+                          <p className="text-xs text-gray-500 truncate">{p.runner}/{p.model}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <div>
@@ -278,6 +381,21 @@ export function AdminPanel() {
             </div>
           )}
         </div>
+
+        {/* Warning: No participants connected */}
+        {session && participants.filter(p => p.connected).length === 0 && (
+          <div className="bg-red-900/30 border border-red-600 rounded-lg p-4 mb-6">
+            <div className="flex items-center gap-3">
+              <span className="text-3xl">⚠️</span>
+              <div>
+                <h3 className="font-bold text-red-400">Nenhum participante conectado</h3>
+                <p className="text-sm text-gray-400">
+                  Participantes precisam conectar usando o PIN <span className="font-mono font-bold text-green-400">{sessionPin}</span> antes de iniciar uma rodada.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Create Round Section */}
         {session && (
@@ -431,7 +549,7 @@ export function AdminPanel() {
                       )}
                     </div>
                   )}
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 flex-wrap">
                     {status === 'pending' && (
                       <button
                         onClick={() => startRound(round.id)}
@@ -451,7 +569,68 @@ export function AdminPanel() {
                       </button>
                     )}
                     {status === 'completed' && (
-                      <span className="text-green-400 px-4 py-2 text-sm">✅ Concluída</span>
+                      <>
+                        {/* Voting status badge */}
+                        <span className={`px-3 py-2 rounded text-xs font-bold ${
+                          round.votingStatus === 'open' ? 'bg-yellow-600' :
+                          round.votingStatus === 'revealed' ? 'bg-purple-600' :
+                          'bg-gray-600'
+                        }`}>
+                          {round.votingStatus === 'open' ? '🗳️ Votação Aberta' :
+                           round.votingStatus === 'revealed' ? '🏆 Premiação' :
+                           '✅ Votação Fechada'}
+                        </span>
+
+                        {/* Close voting button */}
+                        {round.votingStatus === 'open' && (
+                          <button
+                            onClick={() => closeVoting(round.id)}
+                            disabled={loading}
+                            className="bg-yellow-600 hover:bg-yellow-700 px-4 py-2 rounded text-sm font-bold disabled:opacity-50"
+                          >
+                            🔒 Fechar Votação
+                          </button>
+                        )}
+
+                        {/* Start reveal button */}
+                        {round.votingStatus === 'closed' && (
+                          <button
+                            onClick={() => startReveal(round.id)}
+                            disabled={loading}
+                            className="bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded text-sm font-bold disabled:opacity-50"
+                          >
+                            🏆 Iniciar Premiação
+                          </button>
+                        )}
+
+                        {/* Reveal controls */}
+                        {round.votingStatus === 'revealed' && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm text-gray-400">
+                              Revelados: {round.revealedCount}/{participants.length}
+                            </span>
+                            <button
+                              onClick={() => revealNext(round.id)}
+                              disabled={loading || round.revealedCount >= participants.length}
+                              className="bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded text-sm font-bold disabled:opacity-50"
+                            >
+                              🎉 Revelar Próximo
+                            </button>
+                            {round.revealedCount >= participants.length && (
+                              <span className="text-green-400 text-sm">✅ Todos revelados!</span>
+                            )}
+                          </div>
+                        )}
+
+                        {/* View scoreboard link */}
+                        <a
+                          href="/scoreboard"
+                          target="_blank"
+                          className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded text-sm font-bold"
+                        >
+                          📊 Ver Placar
+                        </a>
+                      </>
                     )}
                   </div>
                 </div>
@@ -460,6 +639,55 @@ export function AdminPanel() {
             </div>
           )}
         </div>
+
+        {/* Export Section */}
+        {session && (
+          <div className="bg-gray-800 rounded-lg p-6 mt-6">
+            <h2 className="text-2xl font-bold mb-4">📊 Exportar Dados para Pesquisa</h2>
+            <p className="text-gray-400 mb-4">
+              Exporte os dados da sessão atual para análise e artigos científicos.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <a
+                href={`${API_BASE}/export.csv`}
+                download
+                className="flex flex-col items-center p-4 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors"
+              >
+                <span className="text-3xl mb-2">📈</span>
+                <span className="font-bold">Métricas (CSV)</span>
+                <span className="text-xs text-gray-400 mt-1 text-center">
+                  Tokens, latência, TPS por participante/rodada
+                </span>
+              </a>
+              <a
+                href={`${API_BASE}/export-events.csv`}
+                download
+                className="flex flex-col items-center p-4 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors"
+              >
+                <span className="text-3xl mb-2">📋</span>
+                <span className="font-bold">Eventos (CSV)</span>
+                <span className="text-xs text-gray-400 mt-1 text-center">
+                  Timeline de todos os eventos da sessão
+                </span>
+              </a>
+              <a
+                href={`${API_BASE}/export-all.json`}
+                download
+                className="flex flex-col items-center p-4 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors"
+              >
+                <span className="text-3xl mb-2">🗂️</span>
+                <span className="font-bold">Completo (JSON)</span>
+                <span className="text-xs text-gray-400 mt-1 text-center">
+                  Todos os dados: participantes, rodadas, votos, eventos
+                </span>
+              </a>
+            </div>
+            <div className="mt-4 p-3 bg-gray-700/50 rounded text-sm text-gray-400">
+              <strong>Dados incluídos:</strong> Timestamps de geração (início, primeiro token, fim),
+              ordem e tempo de resposta dos votos, user-agent dos votantes, log completo de eventos.
+            </div>
+          </div>
+        )}
 
         <div className="mt-6">
           <a href="/" className="text-blue-400 hover:text-blue-300">← Voltar para o Telão</a>

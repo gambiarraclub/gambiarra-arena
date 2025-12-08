@@ -18,7 +18,11 @@
       "Bash(sqlite3:*)",
       "Bash(pnpm --filter server build:*)",
       "Bash(pnpm --filter server prisma migrate:*)",
-      "Bash(pnpm exec prisma migrate:*)"
+      "Bash(pnpm exec prisma migrate:*)",
+      "Bash(pnpm --filter @gambiarra/server db:migrate:*)",
+      "mcp__ide__getDiagnostics",
+      "Bash(jq:*)",
+      "Bash(ls:*)"
     ],
     "deny": [],
     "ask": []

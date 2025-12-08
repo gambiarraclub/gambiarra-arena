@@ -236,6 +236,120 @@ Abra http://localhost:5173/voting ou escaneie o QR code no telão.
 curl http://localhost:3000/export.csv > resultados.csv
 ```
 
+## Guia do Administrador: Sistema de Votação
+
+### Visão Geral do Fluxo
+
+O sistema de votação funciona em 5 etapas:
+
+1. **Rodada Ativa** → Participantes geram respostas
+2. **Rodada Encerrada** → Votação abre automaticamente
+3. **Votação Aberta** → Público vota nas respostas (0-5)
+4. **Votação Fechada** → Admin prepara premiação
+5. **Revelação** → Admin revela posições uma a uma (do último ao primeiro)
+
+### Passo a Passo Detalhado
+
+#### 1. Preparação (Antes do Evento)
+
+```bash
+# Iniciar servidor e telão
+pnpm dev
+
+# Criar nova sessão (anote o PIN!)
+curl -X POST http://localhost:3000/session | jq '.pin'
+```
+
+Abra o painel admin: **http://localhost:5173/admin**
+
+#### 2. Durante a Rodada
+
+1. No Admin Panel, crie uma nova rodada com o prompt desejado
+2. Configure: `maxTokens`, `temperature`, `deadlineMs`, e opcionalmente `svgMode` para desafios visuais
+3. Clique em **"Iniciar Rodada"**
+4. Aguarde os participantes gerarem suas respostas
+5. Quando satisfeito, clique em **"Encerrar Rodada"**
+
+> ⚠️ **Importante:** Ao encerrar a rodada, a votação abre automaticamente!
+
+#### 3. Durante a Votação
+
+**Para o Público:**
+- Escaneie o QR code na Arena ou acesse `/voting` no celular
+- Cada resposta aparece como um card (ordem aleatória para cada votante)
+- Vote de 0 (ruim) a 5 (excelente) em cada resposta
+- O nome do participante aparece junto com a resposta
+- Votos são salvos imediatamente e não podem ser alterados
+- Navegue entre as respostas com os botões Anterior/Próximo
+
+**Para o Admin:**
+- Acompanhe o status no Admin Panel: badge verde = "Votação Aberta"
+- Monitore quantos votos cada participante está recebendo no Placar (`/scoreboard`)
+- Quando todos tiverem votado (ou tempo suficiente), clique em **"Fechar Votação"**
+
+#### 4. Preparando a Premiação
+
+Após fechar a votação:
+
+1. O status muda para "Votação Fechada"
+2. Aparece o botão **"Iniciar Premiação"**
+3. Clique para entrar no modo de revelação
+
+> 💡 **Dica:** Projete o Scoreboard (`/scoreboard`) no telão antes de iniciar a premiação
+
+#### 5. Cerimônia de Premiação
+
+O modo de premiação permite revelar posições uma a uma, criando suspense!
+
+**No Telão (`/scoreboard`):**
+- Inicialmente mostra "Aguardando revelação..."
+- A cada clique do admin, revela a próxima posição
+
+**No Admin Panel:**
+- Mostra "Revelados: X de Y"
+- Clique em **"Revelar Próximo"** para mostrar a próxima posição
+- A revelação vai do **último lugar ao primeiro**
+- Quando todas as posições forem reveladas, mostra a tela final com:
+  - Gráfico de barras com médias (0-5)
+  - Pódio destacado (1º, 2º, 3º lugares)
+  - Respostas completas de cada participante
+
+**Ordem de Revelação:**
+```
+Exemplo com 5 participantes:
+Clique 1 → Revela 5º lugar
+Clique 2 → Revela 4º lugar
+Clique 3 → Revela 3º lugar 🥉
+Clique 4 → Revela 2º lugar 🥈
+Clique 5 → Revela 1º lugar 🥇 + Tela final completa
+```
+
+### Estados do Sistema
+
+| Estado | Badge Admin | Ação Disponível |
+|--------|-------------|-----------------|
+| Rodada ativa | 🟢 Ativa | Encerrar Rodada |
+| Votação aberta | 🟢 Votação Aberta | Fechar Votação |
+| Votação fechada | 🔴 Votação Fechada | Iniciar Premiação |
+| Premiação | 🟣 Revelação | Revelar Próximo |
+
+### Dicas para o Apresentador
+
+1. **Antes de revelar:** Crie suspense! Comente sobre as métricas gerais
+2. **Durante a revelação:** Leia a resposta de cada participante em voz alta
+3. **Últimos lugares:** Seja respeitoso, foque em pontos positivos
+4. **Pódio:** Faça uma pausa dramática antes de revelar cada medalha
+5. **Tela final:** Use o gráfico para comparar desempenhos
+
+### URLs Importantes
+
+| URL | Uso |
+|-----|-----|
+| `/` ou `/arena` | Telão principal com grid de participantes |
+| `/voting` | Interface de votação para o público (mobile) |
+| `/scoreboard` | Placar e cerimônia de premiação |
+| `/admin` | Painel de controle do administrador |
+
 ## Estrutura do Projeto
 
 ```
@@ -277,18 +391,20 @@ Edite os prompts ao criar rodadas via API POST `/rounds`:
 
 ## Alterando Pesos de Pontuação
 
-A pontuação atual é baseada em votos do público (1-5). Para customizar:
+A pontuação atual é baseada na **média de votos do público (0-5)**. Para customizar:
 
 1. Edite `server/src/core/votes.ts` na função `getScoreboard()`
 2. Adicione novos critérios (ex: velocidade, eficiência)
-3. Ajuste a fórmula de `total_score`
+3. Ajuste a fórmula de ordenação
 
-Exemplo:
+Exemplo com peso para velocidade:
 ```typescript
-return {
-  // ... outros campos
-  total_score: (avgScore * 0.6) + (tpsAvg * 0.4) // 60% votos, 40% velocidade
-};
+// No getScoreboard(), altere a ordenação:
+scoreboard.sort((a, b) => {
+  const scoreA = a.avg_score * 0.6 + (a.tps_avg / 100) * 0.4;
+  const scoreB = b.avg_score * 0.6 + (b.tps_avg / 100) * 0.4;
+  return scoreB - scoreA; // 60% votos, 40% velocidade
+});
 ```
 
 ## Testes

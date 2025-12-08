@@ -1,152 +1,403 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
-interface Participant {
-  id: string;
+interface Response {
+  participant_id: string;
   nickname: string;
-  runner: string;
-  model: string;
+  generated_content: string | null;
 }
 
 interface Round {
   id: string;
   index: number;
   prompt: string;
+  votingStatus: string;
+  svgMode: boolean;
+  startedAt: string | null;
+  endedAt: string | null;
+}
+
+interface VotedParticipant {
+  participantId: string;
+  score: number;
+}
+
+// Generate a UUID-like string (fallback for non-HTTPS)
+function generateUUID(): string {
+  // Use crypto.randomUUID if available (HTTPS only)
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  // Fallback for HTTP connections
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
+// Get or create voter ID in localStorage
+function getVoterId(): string {
+  const key = 'gambiarra-voter-id';
+  let id = localStorage.getItem(key);
+  if (!id) {
+    id = generateUUID();
+    localStorage.setItem(key, id);
+  }
+  return id;
+}
+
+// Fisher-Yates shuffle
+function shuffleArray<T>(array: T[]): T[] {
+  const shuffled = [...array];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
 }
 
 function Voting() {
-  const [participants, setParticipants] = useState<Participant[]>([]);
-  const [currentRound, setCurrentRound] = useState<Round | null>(null);
-  const [votes, setVotes] = useState<Record<string, number>>({});
-  const [submitted, setSubmitted] = useState(false);
+  const [round, setRound] = useState<Round | null>(null);
+  const [responses, setResponses] = useState<Response[]>([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [votedParticipants, setVotedParticipants] = useState<Map<string, number>>(new Map());
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [voterId] = useState(getVoterId);
+  const [svgMode, setSvgMode] = useState(false);
+
+  // Fetch round and responses
+  const fetchData = useCallback(async () => {
+    try {
+      // Get session to find the latest round
+      const sessionRes = await fetch('/api/session');
+      if (!sessionRes.ok) {
+        setError('Nenhuma sessão ativa');
+        setLoading(false);
+        return;
+      }
+
+      const session = await sessionRes.json();
+      const rounds = session.rounds || [];
+
+      // Find the most recent round that has ended or is active
+      const latestRound = rounds
+        .sort((a: Round, b: Round) => b.index - a.index)
+        .find((r: Round) => r.endedAt || r.startedAt);
+
+      if (!latestRound) {
+        setRound(null);
+        setLoading(false);
+        return;
+      }
+
+      setRound(latestRound);
+
+      // If voting is open, fetch responses
+      if (latestRound.votingStatus === 'open') {
+        const responsesRes = await fetch(`/api/rounds/${latestRound.id}/responses`);
+        if (responsesRes.ok) {
+          const data = await responsesRes.json();
+          setSvgMode(data.svgMode);
+
+          // Shuffle responses only once when loading
+          if (responses.length === 0) {
+            setResponses(shuffleArray(data.responses));
+          }
+        }
+
+        // Fetch already voted participants
+        const votedRes = await fetch(`/api/votes/mine?roundId=${latestRound.id}&voterId=${voterId}`);
+        if (votedRes.ok) {
+          const voted = await votedRes.json();
+          const votedMap = new Map<string, number>();
+          voted.forEach((v: VotedParticipant) => votedMap.set(v.participantId, v.score));
+          setVotedParticipants(votedMap);
+        }
+      }
+
+      setLoading(false);
+    } catch (err) {
+      console.error('Failed to fetch data:', err);
+      setError('Erro ao carregar dados');
+      setLoading(false);
+    }
+  }, [voterId, responses.length]);
 
   useEffect(() => {
-    // Fetch session data
-    fetch('/api/session')
-      .then((res) => res.json())
-      .then((data) => {
-        setParticipants(data.participants || []);
-      })
-      .catch((err) => console.error('Failed to fetch session:', err));
+    fetchData();
+    const interval = setInterval(fetchData, 5000);
+    return () => clearInterval(interval);
+  }, [fetchData]);
 
-    // Fetch current round
-    fetch('/api/rounds/current')
-      .then((res) => res.json())
-      .then((data) => {
-        setCurrentRound(data);
-      })
-      .catch((err) => console.error('Failed to fetch round:', err));
-  }, []);
+  const handleVote = async (score: number) => {
+    if (!round || responses.length === 0) return;
 
-  const handleVote = (participantId: string, score: number) => {
-    setVotes((prev) => ({
-      ...prev,
-      [participantId]: score,
-    }));
-  };
-
-  const submitVotes = async () => {
-    if (!currentRound) return;
+    const participant = responses[currentIndex];
 
     try {
-      for (const [participantId, score] of Object.entries(votes)) {
-        await fetch('/api/votes', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            roundId: currentRound.id,
-            participantId,
-            score,
-          }),
-        });
+      const res = await fetch('/api/votes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          roundId: round.id,
+          participantId: participant.participant_id,
+          score,
+          voterId,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        if (data.error === 'Already voted for this participant') {
+          // Already voted, just update UI
+        } else {
+          throw new Error(data.error || 'Failed to vote');
+        }
       }
-      setSubmitted(true);
+
+      // Update local state
+      setVotedParticipants((prev) => {
+        const newMap = new Map(prev);
+        newMap.set(participant.participant_id, score);
+        return newMap;
+      });
+
+      // Auto advance to next unvoted participant
+      const nextUnvotedIndex = responses.findIndex(
+        (r, i) => i > currentIndex && !votedParticipants.has(r.participant_id)
+      );
+
+      if (nextUnvotedIndex !== -1) {
+        setCurrentIndex(nextUnvotedIndex);
+      } else if (currentIndex < responses.length - 1) {
+        setCurrentIndex(currentIndex + 1);
+      }
     } catch (err) {
-      console.error('Failed to submit votes:', err);
-      alert('Erro ao enviar votos. Tente novamente.');
+      console.error('Failed to vote:', err);
+      alert('Erro ao enviar voto. Tente novamente.');
     }
   };
 
-  if (submitted) {
+  const goToPrevious = () => {
+    if (currentIndex > 0) {
+      setCurrentIndex(currentIndex - 1);
+    }
+  };
+
+  const goToNext = () => {
+    if (currentIndex < responses.length - 1) {
+      setCurrentIndex(currentIndex + 1);
+    }
+  };
+
+  // Loading state
+  if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center p-8">
         <div className="text-center">
-          <div className="text-6xl mb-4">✅</div>
-          <h2 className="text-4xl font-bold text-primary mb-4">
-            Voto enviado com sucesso!
+          <div className="text-6xl mb-4 animate-spin">⏳</div>
+          <h2 className="text-2xl text-gray-400">Carregando...</h2>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-8">
+        <div className="text-center">
+          <div className="text-6xl mb-4">❌</div>
+          <h2 className="text-2xl text-red-400">{error}</h2>
+        </div>
+      </div>
+    );
+  }
+
+  // No round or voting not started
+  if (!round || !round.endedAt) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-8">
+        <div className="text-center">
+          <div className="text-6xl mb-4 animate-pulse">⏳</div>
+          <h2 className="text-3xl font-bold text-primary mb-4">
+            Aguarde a rodada encerrar
           </h2>
           <p className="text-xl text-gray-400">
-            Obrigado por participar!
+            A votação será liberada em breve...
           </p>
         </div>
       </div>
     );
   }
 
+  // Voting closed
+  if (round.votingStatus === 'closed' || round.votingStatus === 'revealed') {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-8">
+        <div className="text-center">
+          <div className="text-6xl mb-4">🏆</div>
+          <h2 className="text-3xl font-bold text-primary mb-4">
+            Votação Encerrada
+          </h2>
+          <p className="text-xl text-gray-400">
+            {round.votingStatus === 'revealed'
+              ? 'Acompanhe a premiação no telão!'
+              : 'Aguarde a revelação dos resultados no telão.'}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // No responses yet
+  if (responses.length === 0) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-8">
+        <div className="text-center">
+          <div className="text-6xl mb-4 animate-pulse">📭</div>
+          <h2 className="text-2xl text-gray-400 mb-2">Nenhuma resposta disponível</h2>
+          <p className="text-gray-500">
+            Aguarde os participantes completarem suas respostas.
+          </p>
+          <p className="text-sm text-gray-600 mt-4">
+            Atualizando automaticamente...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const currentResponse = responses[currentIndex];
+  const isVoted = votedParticipants.has(currentResponse.participant_id);
+  const votedScore = votedParticipants.get(currentResponse.participant_id);
+  const votedCount = votedParticipants.size;
+  const totalResponses = responses.length;
+
   return (
-    <div className="min-h-screen p-8">
-      <header className="mb-8 text-center">
-        <h1 className="text-5xl font-bold text-primary mb-4">
-          🗳️ Votação
+    <div className="min-h-screen flex flex-col p-4 md:p-8">
+      {/* Header */}
+      <header className="mb-4 text-center">
+        <h1 className="text-3xl md:text-4xl font-bold text-primary mb-2">
+          🗳️ Votação - Rodada {round.index}
         </h1>
-        {currentRound && (
-          <div className="bg-gray-800 p-6 rounded-lg inline-block">
-            <h2 className="text-2xl font-semibold mb-2">
-              Rodada {currentRound.index}
-            </h2>
-            <p className="text-lg text-gray-300">{currentRound.prompt}</p>
-          </div>
-        )}
+        <p className="text-sm md:text-base text-gray-400 mb-2">
+          {round.prompt}
+        </p>
+        <div className="flex justify-center gap-4 text-sm">
+          <span className="text-gray-500">
+            {currentIndex + 1} de {totalResponses}
+          </span>
+          <span className="text-primary">
+            {votedCount} votados
+          </span>
+        </div>
       </header>
 
-      <div className="max-w-4xl mx-auto space-y-6">
-        {participants.map((participant) => (
-          <div
-            key={participant.id}
-            className="bg-gray-800 rounded-lg p-6 border-2 border-gray-700"
-          >
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h3 className="text-2xl font-bold text-primary">
-                  {participant.nickname}
-                </h3>
-                <p className="text-sm text-gray-400">
-                  {participant.runner} • {participant.model}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex gap-2">
-              {[1, 2, 3, 4, 5].map((score) => (
-                <button
-                  key={score}
-                  onClick={() => handleVote(participant.id, score)}
-                  className={`flex-1 py-3 px-4 rounded-lg text-xl font-bold transition-all ${
-                    votes[participant.id] === score
-                      ? 'bg-primary text-white scale-105'
-                      : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                  }`}
-                >
-                  {score}
-                </button>
-              ))}
-            </div>
-          </div>
+      {/* Progress dots */}
+      <div className="flex justify-center gap-1 mb-4 flex-wrap">
+        {responses.map((r, i) => (
+          <button
+            key={r.participant_id}
+            onClick={() => setCurrentIndex(i)}
+            className={`w-3 h-3 rounded-full transition-all ${
+              i === currentIndex
+                ? 'bg-primary scale-125'
+                : votedParticipants.has(r.participant_id)
+                ? 'bg-green-500'
+                : 'bg-gray-600'
+            }`}
+          />
         ))}
       </div>
 
-      <div className="mt-8 text-center">
-        <button
-          onClick={submitVotes}
-          disabled={Object.keys(votes).length === 0}
-          className={`px-8 py-4 rounded-lg text-xl font-bold transition-all ${
-            Object.keys(votes).length > 0
-              ? 'bg-primary hover:bg-secondary text-white'
-              : 'bg-gray-700 text-gray-500 cursor-not-allowed'
-          }`}
-        >
-          Enviar Votos
-        </button>
+      {/* Main card */}
+      <div className="flex-1 flex flex-col max-w-2xl mx-auto w-full">
+        <div className="flex-1 bg-gray-800 rounded-lg border-2 border-gray-700 flex flex-col overflow-hidden">
+          {/* Participant name */}
+          <div className="p-4 border-b border-gray-700 flex items-center justify-between">
+            <h2 className="text-xl font-bold text-primary">
+              Resposta de {currentResponse.nickname}
+            </h2>
+            {isVoted && (
+              <span className="bg-green-500 text-white px-3 py-1 rounded-full text-sm font-bold">
+                Votado: {votedScore}
+              </span>
+            )}
+          </div>
+
+          {/* Response content */}
+          <div className="flex-1 p-4 overflow-auto">
+            {svgMode && currentResponse.generated_content ? (
+              <div
+                className="w-full h-full flex items-center justify-center bg-white rounded-lg p-4"
+                dangerouslySetInnerHTML={{ __html: currentResponse.generated_content }}
+              />
+            ) : (
+              <div className="whitespace-pre-wrap text-gray-200 font-mono text-sm leading-relaxed">
+                {currentResponse.generated_content || '(Sem resposta)'}
+              </div>
+            )}
+          </div>
+
+          {/* Vote buttons */}
+          {!isVoted && (
+            <div className="p-4 border-t border-gray-700">
+              <p className="text-center text-gray-400 mb-3 text-sm">
+                Dê sua nota (0 = ruim, 5 = excelente)
+              </p>
+              <div className="flex gap-2">
+                {[0, 1, 2, 3, 4, 5].map((score) => (
+                  <button
+                    key={score}
+                    onClick={() => handleVote(score)}
+                    className="flex-1 py-4 rounded-lg text-xl font-bold bg-gray-700 text-gray-300
+                               hover:bg-primary hover:text-white active:scale-95 transition-all"
+                  >
+                    {score}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Navigation */}
+        <div className="flex justify-between mt-4 gap-4">
+          <button
+            onClick={goToPrevious}
+            disabled={currentIndex === 0}
+            className={`flex-1 py-3 rounded-lg font-bold transition-all ${
+              currentIndex === 0
+                ? 'bg-gray-800 text-gray-600 cursor-not-allowed'
+                : 'bg-gray-700 text-white hover:bg-gray-600'
+            }`}
+          >
+            ← Anterior
+          </button>
+          <button
+            onClick={goToNext}
+            disabled={currentIndex === responses.length - 1}
+            className={`flex-1 py-3 rounded-lg font-bold transition-all ${
+              currentIndex === responses.length - 1
+                ? 'bg-gray-800 text-gray-600 cursor-not-allowed'
+                : 'bg-gray-700 text-white hover:bg-gray-600'
+            }`}
+          >
+            Próximo →
+          </button>
+        </div>
       </div>
+
+      {/* Completion message */}
+      {votedCount === totalResponses && (
+        <div className="mt-4 text-center">
+          <div className="bg-green-500/20 text-green-400 px-6 py-3 rounded-lg inline-block">
+            ✅ Você votou em todas as respostas! Obrigado por participar!
+          </div>
+        </div>
+      )}
     </div>
   );
 }
