@@ -67,8 +67,10 @@ async function seed() {
      --nickname "Seu Nome" \\
      --runner mock
 
-🌐 Telão: http://localhost:5173
-🗳️  Votação: http://localhost:5173?view=voting
+🌐 Arena: http://localhost:5173
+🗳️  Votação: http://localhost:5173/voting
+📊 Placar: http://localhost:5173/scoreboard
+⚙️  Admin: http://localhost:5173/admin
 `);
 }
 

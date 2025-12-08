@@ -1,19 +1,20 @@
-import { useState, useEffect } from 'react';
 import Arena from './components/Arena';
 import Voting from './components/Voting';
 import Scoreboard from './components/Scoreboard';
 import { AdminPanel } from './components/AdminPanel';
 
-function App() {
-  const [view, setView] = useState<'arena' | 'voting' | 'scoreboard' | 'admin'>('arena');
-  const params = new URLSearchParams(window.location.search);
-  const initialView = params.get('view') as 'arena' | 'voting' | 'scoreboard' | 'admin' | null;
+type View = 'arena' | 'voting' | 'scoreboard' | 'admin';
 
-  useEffect(() => {
-    if (initialView) {
-      setView(initialView);
-    }
-  }, [initialView]);
+function getViewFromPath(): View {
+  const path = window.location.pathname;
+  if (path === '/voting') return 'voting';
+  if (path === '/scoreboard') return 'scoreboard';
+  if (path === '/admin') return 'admin';
+  return 'arena';
+}
+
+function App() {
+  const view = getViewFromPath();
 
   const renderView = () => {
     switch (view) {

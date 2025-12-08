@@ -38,8 +38,10 @@ pnpm simulate
 
 ### 4. Acessar
 
-- **Telão:** http://localhost:5173
-- **Votação:** http://localhost:5173?view=voting
+- **Arena:** http://localhost:5173
+- **Votação:** http://localhost:5173/voting
+- **Placar:** http://localhost:5173/scoreboard
+- **Admin:** http://localhost:5173/admin
 - **API:** http://localhost:3000
 
 ### 5. Criar e Iniciar Rodada

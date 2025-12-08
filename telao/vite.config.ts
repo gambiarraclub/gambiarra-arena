@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
+  appType: 'spa',
   server: {
     // Bind to all interfaces so the dev server is reachable from other devices on the LAN
     host: '0.0.0.0',

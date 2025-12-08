@@ -118,7 +118,7 @@ Você verá:
 
 Enquanto os clientes geram texto:
 
-1. Abra em outra aba/dispositivo: **http://localhost:5173?view=voting**
+1. Abra em outra aba/dispositivo: **http://localhost:5173/voting**
 2. Atribua notas de 1-5 para cada participante
 3. Clique em "Enviar Votos"
 

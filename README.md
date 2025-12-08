@@ -97,9 +97,10 @@ docker compose up
 
 Pronto! 🎉 A aplicação completa estará rodando em:
 - **Servidor:** http://localhost:3000
-- **Telão (Arena):** http://localhost:5173
-- **Votação:** http://localhost:5173?view=voting
-- **Placar:** http://localhost:5173?view=scoreboard
+- **Arena:** http://localhost:5173
+- **Votação:** http://localhost:5173/voting
+- **Placar:** http://localhost:5173/scoreboard
+- **Admin:** http://localhost:5173/admin
 
 **Pré-requisitos:**
 - Docker e Docker Compose instalados
@@ -154,8 +155,8 @@ Isso iniciará:
 - Servidor na porta 3000 (http://localhost:3000)
 - Telão na porta 5173:
   - Arena: http://localhost:5173
-  - Votação: http://localhost:5173?view=voting
-  - Placar: http://localhost:5173?view=scoreboard
+  - Votação: http://localhost:5173/voting
+  - Placar: http://localhost:5173/scoreboard
 
 ### Rodando uma Sessão Completa
 
@@ -227,7 +228,7 @@ Abra http://localhost:5173 para ver a arena ao vivo.
 
 **7. Votar:**
 
-Abra http://localhost:5173?view=voting ou escaneie o QR code no telão.
+Abra http://localhost:5173/voting ou escaneie o QR code no telão.
 
 **8. Exportar resultados:**
 

@@ -119,7 +119,7 @@ function Arena() {
 
     // Set voting URL
     const baseUrl = window.location.origin;
-    setVotingUrl(`${baseUrl}?view=voting`);
+    setVotingUrl(`${baseUrl}/voting`);
 
     return () => {
       clearInterval(interval);

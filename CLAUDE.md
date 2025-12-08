@@ -59,7 +59,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **Telão (`telao/`):**
 - `src/components/Arena.tsx`: Main display with participant grid (supports SVG rendering mode)
 - `src/components/Voting.tsx`: Voting interface (accessible via QR code)
-- URL views: `?view=voting` for voting, `?view=scoreboard` for scoreboard
+- URL routes: `/voting`, `/scoreboard`, `/admin` (path-based routing)
 
 ## Common Development Commands
 

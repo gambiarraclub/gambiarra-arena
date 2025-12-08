@@ -311,7 +311,7 @@ Você verá **EM TEMPO REAL**:
 ## 🗳️ Passo 9: Testar Votação (Opcional)
 
 **Abra uma nova aba** no navegador:
-- http://localhost:5173?view=voting
+- http://localhost:5173/voting
 
 1. Dê notas de 1-5 para cada cliente
 2. Clique em "Enviar Votos"
@@ -323,7 +323,7 @@ Você verá **EM TEMPO REAL**:
 **Opção 1: Visualizar no telão (recomendado)**
 
 Abra uma nova aba no navegador:
-- http://localhost:5173?view=scoreboard
+- http://localhost:5173/scoreboard
 
 Você verá:
 - 🥇🥈🥉 Pódio com as 3 melhores posições
