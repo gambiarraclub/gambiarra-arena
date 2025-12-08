@@ -390,13 +390,17 @@ export default function Scoreboard() {
   }
 
   // State: Normal scoreboard (votingStatus !== 'revealed')
+  // Sort participants alphabetically for suspense mode (hide rankings)
+  const sortedByName = [...scoreboard].sort((a, b) => a.nickname.localeCompare(b.nickname));
+  const totalVotes = scoreboard.reduce((sum, p) => sum + p.votes, 0);
+
   return (
     <div className="min-h-screen bg-dark text-white p-8">
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <div className="mb-8 text-center">
           <h1 className="text-5xl font-bold mb-4 text-primary">
-            📊 Placar
+            {votingStatus === 'open' ? '🗳️ Votação em Andamento' : '⏳ Aguardando Premiação'}
           </h1>
           {roundInfo && (
             <div className="text-gray-400">
@@ -404,70 +408,80 @@ export default function Scoreboard() {
               <p className="text-lg italic">"{roundInfo.prompt}"</p>
             </div>
           )}
-          {votingStatus === 'open' && (
-            <div className="mt-4 inline-block bg-green-500/20 text-green-400 px-4 py-2 rounded-full">
-              🗳️ Votação em andamento
+
+          {/* Total votes counter */}
+          <div className="mt-6 inline-flex items-center gap-4 bg-gray-800/50 px-8 py-4 rounded-full border border-gray-700">
+            <span className="text-5xl">🗳️</span>
+            <div>
+              <div className="text-5xl font-bold text-primary">{totalVotes}</div>
+              <div className="text-gray-400">voto{totalVotes !== 1 ? 's' : ''} recebido{totalVotes !== 1 ? 's' : ''}</div>
             </div>
-          )}
+          </div>
         </div>
 
-        {/* Scoreboard */}
-        <div className="space-y-4">
-          {scoreboard.map((participant, index) => (
+        {/* Participants with vote counts only (no scores revealed) */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {sortedByName.map((participant) => (
             <div
               key={participant.participant_id}
-              className={`border-2 rounded-lg p-6 transition-all ${getPositionClass(index)}`}
+              className="bg-gray-800/50 border-2 border-gray-700 rounded-xl p-6 transition-all hover:border-primary/50"
             >
-              <div className="flex items-center justify-between">
-                {/* Position and Name */}
-                <div className="flex items-center space-x-4 flex-1">
-                  <div className="text-4xl font-bold w-16 text-center">
-                    {getMedalEmoji(index)}
-                    {!getMedalEmoji(index) && `${index + 1}º`}
+              <div className="text-center">
+                {/* Nickname */}
+                <h3 className="text-2xl font-bold mb-4">{participant.nickname}</h3>
+
+                {/* Vote count with animation */}
+                <div className="flex items-center justify-center gap-3">
+                  <div className={`text-6xl font-bold transition-all ${
+                    participant.votes > 0 ? 'text-primary' : 'text-gray-600'
+                  }`}>
+                    {participant.votes}
                   </div>
-                  <div>
-                    <h3 className="text-2xl font-bold">{participant.nickname}</h3>
+                  <div className="text-left">
+                    <div className="text-gray-400">voto{participant.votes !== 1 ? 's' : ''}</div>
+                    {participant.votes > 0 && (
+                      <div className="text-xs text-gray-500">recebido{participant.votes !== 1 ? 's' : ''}</div>
+                    )}
                   </div>
                 </div>
 
-                {/* Scores */}
-                <div className="grid grid-cols-2 gap-8 text-center">
-                  {/* Vote Statistics */}
-                  <div>
-                    <div className="text-3xl font-bold text-primary">
-                      {participant.avg_score.toFixed(2)}
-                    </div>
-                    <div className="text-sm text-gray-400">Média</div>
-                    <div className="text-xs text-gray-500 mt-1">
-                      {participant.votes} voto{participant.votes !== 1 ? 's' : ''}
-                    </div>
+                {/* Vote indicator dots */}
+                {participant.votes > 0 && participant.votes <= 20 && (
+                  <div className="mt-4 flex justify-center flex-wrap gap-1">
+                    {Array.from({ length: participant.votes }).map((_, i) => (
+                      <div
+                        key={i}
+                        className="w-3 h-3 rounded-full bg-primary animate-pulse"
+                        style={{ animationDelay: `${i * 100}ms` }}
+                      />
+                    ))}
                   </div>
-
-                  {/* Performance Metrics */}
-                  <div>
-                    <div className="text-2xl font-bold text-secondary">
-                      {participant.tokens} tokens
-                    </div>
-                    <div className="text-sm text-gray-400">
-                      {participant.tps_avg.toFixed(1)} TPS
-                    </div>
+                )}
+                {participant.votes > 20 && (
+                  <div className="mt-4 text-primary text-sm">
+                    🔥 Muitos votos!
                   </div>
-                </div>
-              </div>
-
-              {/* Progress bar showing average score */}
-              <div className="mt-4 bg-gray-700 rounded-full h-2 overflow-hidden">
-                <div
-                  className="bg-primary h-full transition-all duration-500"
-                  style={{ width: `${(participant.avg_score / 5) * 100}%` }}
-                />
+                )}
               </div>
             </div>
           ))}
         </div>
 
+        {/* Suspense message */}
+        <div className="mt-12 text-center">
+          {votingStatus === 'open' ? (
+            <div className="text-xl text-gray-400 animate-pulse">
+              Os resultados serão revelados quando a votação encerrar...
+            </div>
+          ) : (
+            <div className="text-xl text-yellow-500 animate-pulse">
+              Aguardando o admin iniciar a premiação...
+            </div>
+          )}
+        </div>
+
         {/* Footer */}
-        <div className="mt-12 text-center text-gray-500 text-sm">
+        <div className="mt-8 text-center text-gray-500 text-sm">
           <p>🎮 Gambiarra LLM Club Arena Local</p>
           <p className="mt-2">Atualização automática a cada 2 segundos</p>
         </div>
