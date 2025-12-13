@@ -219,32 +219,12 @@ export class WebSocketHub {
       return;
     }
 
-    // Track first token time for research
-    if (message.seq === 0) {
-      if (!this.firstTokenTime.has(participantKey)) {
-        this.firstTokenTime.set(participantKey, new Map());
-      }
-      this.firstTokenTime.get(participantKey)!.set(message.round, now);
-
-      // Log first token event
-      const session = await this.prisma.session.findFirst({
-        where: { status: 'active' },
-      });
-      if (session) {
-        await this.eventLogger?.log({
-          sessionId: session.id,
-          eventType: 'first_token_received',
-          actorType: 'participant',
-          actorId: participantKey,
-          targetType: 'round',
-          metadata: { round: message.round },
-        });
-      }
-    }
-
+    // CRITICAL: Push token and broadcast BEFORE any async operations
+    // This prevents race conditions where subsequent tokens arrive while
+    // we're awaiting database operations for seq=0
     tokens.push(message.content);
 
-    // Broadcast to telao
+    // Broadcast to telao immediately (synchronous)
     this.broadcastToTelao({
       type: 'token_update',
       participant_id: message.participant_id,
@@ -253,6 +233,32 @@ export class WebSocketHub {
       content: message.content,
       total_tokens: tokens.length,
     });
+
+    // Track first token time for research (async, non-blocking for subsequent tokens)
+    if (message.seq === 0) {
+      if (!this.firstTokenTime.has(participantKey)) {
+        this.firstTokenTime.set(participantKey, new Map());
+      }
+      this.firstTokenTime.get(participantKey)!.set(message.round, now);
+
+      // Log first token event (fire and forget - don't block token processing)
+      this.prisma.session.findFirst({
+        where: { status: 'active' },
+      }).then((session) => {
+        if (session) {
+          this.eventLogger?.log({
+            sessionId: session.id,
+            eventType: 'first_token_received',
+            actorType: 'participant',
+            actorId: participantKey,
+            targetType: 'round',
+            metadata: { round: message.round },
+          });
+        }
+      }).catch((err) => {
+        this.logger.error({ err }, 'Failed to log first token event');
+      });
+    }
   }
 
   private async handleComplete(message: CompleteMessage) {
