@@ -401,6 +401,83 @@ function Arena() {
         )}
       </header>
 
+      {/* Progress bar - shows generating vs completed participants */}
+      {currentRound && participants.length > 0 && (
+        <div className="mb-6 animate-fade-in">
+          {(() => {
+            const total = participants.length;
+            const generating = participants.filter(
+              (p) => participantStates[p.id]?.isGenerating === true
+            ).length;
+            const completed = participants.filter(
+              (p) =>
+                participantStates[p.id]?.isGenerating === false &&
+                (participantStates[p.id]?.content?.length > 0 || participantStates[p.id]?.tokens > 0)
+            ).length;
+            const waiting = total - generating - completed;
+
+            const completedPercent = total > 0 ? (completed / total) * 100 : 0;
+            const generatingPercent = total > 0 ? (generating / total) * 100 : 0;
+            const waitingPercent = total > 0 ? (waiting / total) * 100 : 0;
+
+            return (
+              <div className="arcade-card rounded-lg p-4">
+                <div className="flex items-center justify-between mb-2 text-sm font-mono">
+                  <div className="flex items-center gap-4">
+                    {completed > 0 && (
+                      <span className="flex items-center gap-2">
+                        <span className="w-3 h-3 rounded-full bg-[var(--color-neon-green)]"></span>
+                        <span className="text-[var(--color-neon-green)]">{completed}</span>
+                        <span className="text-gray-500">prontos</span>
+                      </span>
+                    )}
+                    {generating > 0 && (
+                      <span className="flex items-center gap-2">
+                        <span className="w-3 h-3 rounded-full bg-[var(--color-neon-pink)] animate-pulse"></span>
+                        <span className="text-[var(--color-neon-pink)]">{generating}</span>
+                        <span className="text-gray-500">gerando</span>
+                      </span>
+                    )}
+                    {waiting > 0 && (
+                      <span className="flex items-center gap-2">
+                        <span className="w-3 h-3 rounded-full bg-gray-600"></span>
+                        <span className="text-gray-400">{waiting}</span>
+                        <span className="text-gray-500">aguardando</span>
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-gray-400">
+                    {completed}/{total}
+                  </span>
+                </div>
+                <div className="h-3 bg-[var(--color-midnight)] rounded-full overflow-hidden flex">
+                  {completedPercent > 0 && (
+                    <div
+                      className="h-full bg-[var(--color-neon-green)] transition-all duration-500 ease-out"
+                      style={{ width: `${completedPercent}%` }}
+                    />
+                  )}
+                  {generatingPercent > 0 && (
+                    <div
+                      className="h-full bg-[var(--color-neon-pink)] transition-all duration-500 ease-out relative overflow-hidden"
+                      style={{ width: `${generatingPercent}%` }}
+                    >
+                      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer" />
+                    </div>
+                  )}
+                  {waitingPercent > 0 && (
+                    <div
+                      className="h-full bg-gray-700 transition-all duration-500 ease-out"
+                      style={{ width: `${waitingPercent}%` }}
+                    />
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
       {/* Participants grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 mb-10">
         {participants.map((participant, index) => {

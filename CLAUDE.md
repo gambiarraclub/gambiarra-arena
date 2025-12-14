@@ -7,6 +7,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **README.md** (Portuguese): Main user-facing documentation
 - **README_EN.md** (English): English version of the README
 - **CLAUDE.md** (This file): Developer documentation for Claude Code
+- **ARCHITECTURE.md**: System architecture diagrams and component overview
+- **LIMITS.md**: Rate limiting, connection limits, and performance bottlenecks
 
 ## Project Overview
 

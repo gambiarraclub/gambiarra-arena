@@ -234,3 +234,25 @@ Este documento descreve a arquitetura do sistema para uso em geradores de diagra
 | Servidor HTTP | 3000 | `/session`, `/rounds`, `/votes`, `/scoreboard` |
 | Servidor WebSocket | 3000 | `/ws` |
 | Telão (dev) | 5173 | `/`, `/voting`, `/scoreboard`, `/admin` |
+
+---
+
+## Limites e Rate Limiting
+
+O servidor implementa rate limiting para proteção contra abusos:
+
+| Configuração | Valor Padrão | Descrição |
+|--------------|--------------|-----------|
+| `RATE_LIMIT_MAX` | 100 | Requisições por IP por janela |
+| `RATE_LIMIT_TIME_WINDOW` | 60000ms | Janela de tempo (60 segundos) |
+
+### Gargalos Potenciais
+
+| Gargalo | Impacto | Solução |
+|---------|---------|---------|
+| Rate Limit por IP | Erro 429 com muitos clientes do mesmo IP | Aumentar `RATE_LIMIT_MAX` |
+| SQLite | Lentidão em escritas concorrentes | Operações assíncronas |
+| Token Buffer | Alto uso de RAM | Monitorar memória |
+| Event Loop | Saturação com 1000+ conexões | Broadcasts assíncronos |
+
+Para documentação completa de limites e performance, consulte [LIMITS.md](LIMITS.md)

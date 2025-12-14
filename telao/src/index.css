@@ -17,6 +17,7 @@
   --color-neon-pink: #FF006E;
   --color-neon-cyan: #00F5D4;
   --color-neon-purple: #9B5DE5;
+  --color-neon-green: #39FF14;
   --color-deep-blue: #0A0E27;
   --color-midnight: #12162D;
   --color-surface: #1A1F3D;
@@ -352,6 +353,15 @@ code, pre {
 
 .animate-counter-up {
   animation: counter-up 0.4s ease-out forwards;
+}
+
+.animate-shimmer {
+  animation: shimmer-slide 1.5s ease-in-out infinite;
+}
+
+@keyframes shimmer-slide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
 }
 
 /* Stagger delays */

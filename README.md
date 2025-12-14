@@ -421,7 +421,22 @@ cd client
 pnpm simulate
 ```
 
+## Limites e Performance
+
+O servidor implementa rate limiting (100 req/min por IP por padrão). Para testes com muitos clientes:
+
+```bash
+# Aumentar limite para testes locais
+RATE_LIMIT_MAX=2000 pnpm dev
+```
+
+Para documentação completa sobre limites, gargalos e configurações de performance, consulte [LIMITS.md](LIMITS.md).
+
 ## Troubleshooting
+
+**Erro 429 (Too Many Requests):**
+- Muitos clientes conectando do mesmo IP atingem o rate limit
+- Solução: `RATE_LIMIT_MAX=2000 pnpm dev`
 
 **Ollama não conecta:**
 ```bash
