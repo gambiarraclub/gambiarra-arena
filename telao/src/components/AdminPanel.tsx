@@ -98,9 +98,12 @@ export function AdminPanel() {
   const loadRounds = async () => {
     try {
       const response = await fetch(`${API_BASE}/session`);
+      if (response.status === 429) {
+        console.warn('[Admin] Rate limited, backing off');
+        return;
+      }
       if (response.ok) {
         const data = await response.json();
-        console.log('Session data:', data);
         setRounds(data.rounds || []);
         setParticipants(data.participants || []);
       }

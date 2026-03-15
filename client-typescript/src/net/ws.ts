@@ -48,8 +48,9 @@ interface ErrorMessage {
 export class GambiarraClient extends EventEmitter {
   private ws: WebSocket | null = null;
   private reconnectAttempts = 0;
-  private maxReconnectAttempts = 5;
+  private maxReconnectAttempts = 15;
   private reconnectDelay = 1000;
+  private maxReconnectDelay = 30000; // Cap backoff at 30s
 
   constructor(private config: ClientConfig) {
     super();
@@ -155,14 +156,23 @@ export class GambiarraClient extends EventEmitter {
 
   private attemptReconnect() {
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      console.error('Max reconnection attempts reached');
+      console.error(`Max reconnection attempts (${this.maxReconnectAttempts}) reached — giving up`);
+      this.emit('reconnect_failed');
       return;
     }
 
     this.reconnectAttempts++;
-    const delay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1);
+    const delay = Math.min(
+      this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1),
+      this.maxReconnectDelay
+    );
 
     console.log(`Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+    this.emit('reconnecting', {
+      attempt: this.reconnectAttempts,
+      maxAttempts: this.maxReconnectAttempts,
+      delayMs: delay,
+    });
 
     setTimeout(() => {
       this.connect().catch((err) => {

@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import SvgRenderer from './SvgRenderer';
 
 interface Participant {
@@ -130,4 +131,4 @@ function ParticipantCard({
   );
 }
 
-export default ParticipantCard;
+export default memo(ParticipantCard);

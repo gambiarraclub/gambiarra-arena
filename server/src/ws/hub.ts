@@ -19,6 +19,7 @@ interface ParticipantConnection {
   lastSeq: Map<number, number>; // round -> last seq
   lastSeen: Date;
   isAlive: boolean; // Track if connection responded to last ping
+  missedPongs: number; // Consecutive missed pongs before killing
 }
 
 export class WebSocketHub {
@@ -26,7 +27,8 @@ export class WebSocketHub {
   private telaoConnections = new Map<string, WebSocket>();
   private heartbeatInterval: NodeJS.Timeout | null = null;
   private pingInterval: NodeJS.Timeout | null = null;
-  private readonly PING_INTERVAL_MS = 15000; // 15 seconds - ping interval for dead connection detection
+  private readonly PING_INTERVAL_MS = 30000; // 30 seconds - ping interval (longer to tolerate LLM-loaded machines)
+  private readonly MAX_MISSED_PONGS = 3; // Kill after 3 consecutive misses (~90s unresponsive)
   private tokenBuffer = new Map<string, Map<number, string[]>>(); // participantId -> round -> tokens
   private firstTokenTime = new Map<string, Map<number, Date>>(); // participantId -> round -> first token timestamp
   private generationStartTime = new Map<string, Map<number, Date>>(); // participantId -> round -> start timestamp
@@ -49,6 +51,7 @@ export class WebSocketHub {
       const conn = this.connections.get(connId);
       if (conn) {
         conn.isAlive = true;
+        conn.missedPongs = 0;
         conn.lastSeen = new Date();
       }
     });
@@ -100,7 +103,10 @@ export class WebSocketHub {
     // Register this websocket as a telao connection
     this.telaoConnections.set(connId, ws);
 
-    this.logger.debug({ connId, view: message.view }, 'Telao registered');
+    this.logger.info(
+      { connId, view: message.view, totalTelaoConnections: this.telaoConnections.size },
+      'WS_TELAO_REGISTERED: Telao display connected'
+    );
 
     try {
       ws.send(JSON.stringify({ type: 'registered_telao', view: message.view || 'arena' }));
@@ -156,6 +162,22 @@ export class WebSocketHub {
         },
       });
 
+      // Dedup: close any existing connections for this participant (handles reconnect)
+      for (const [existingConnId, existingConn] of this.connections.entries()) {
+        if (existingConn.participantId === message.participant_id) {
+          this.logger.info(
+            { participantId: message.participant_id, oldConnId: existingConnId, newConnId: connId },
+            'WS_DEDUP: Closing stale connection for reconnecting participant'
+          );
+          try {
+            existingConn.ws.close();
+          } catch {
+            // Already closed
+          }
+          this.connections.delete(existingConnId);
+        }
+      }
+
       // Store connection
       this.connections.set(connId, {
         participantId: message.participant_id,
@@ -163,12 +185,21 @@ export class WebSocketHub {
         ws,
         lastSeq: new Map(),
         lastSeen: new Date(),
-        isAlive: true, // Just connected, so alive
+        isAlive: true,
+        missedPongs: 0,
       });
 
-      this.logger.debug(
-        { participantId: message.participant_id, sessionId: session.id },
-        'Participant registered'
+      this.logger.info(
+        {
+          participantId: message.participant_id,
+          sessionId: session.id,
+          nickname: message.nickname,
+          runner: message.runner,
+          model: message.model,
+          connId,
+          totalConnections: this.connections.size,
+        },
+        'WS_REGISTERED: Participant registered'
       );
 
       // Log event for research
@@ -228,8 +259,8 @@ export class WebSocketHub {
     // Validate sequence
     if (message.seq !== tokens.length) {
       this.logger.warn(
-        { participantId: message.participant_id, expected: tokens.length, got: message.seq },
-        'Sequence mismatch'
+        { participantId: message.participant_id, round: message.round, expected: tokens.length, got: message.seq },
+        'WS_SEQ_MISMATCH: Token sequence mismatch — token dropped'
       );
       return;
     }
@@ -367,9 +398,16 @@ export class WebSocketHub {
         },
       });
 
-      this.logger.debug(
-        { participantId: message.participant_id, round: message.round, tokens: message.tokens },
-        'Completion recorded'
+      this.logger.info(
+        {
+          participantId: message.participant_id,
+          round: message.round,
+          tokens: message.tokens,
+          durationMs: finalDurationMs,
+          ttftMs: finalTtftMs,
+          tps: finalTps?.toFixed(1),
+        },
+        'WS_COMPLETE: Generation completed'
       );
 
       // Log generation completed event for research
@@ -407,7 +445,14 @@ export class WebSocketHub {
   private async handleDisconnection(connId: string) {
     const conn = this.connections.get(connId);
     if (conn) {
-      this.logger.debug({ participantId: conn.participantId }, 'Participant disconnected');
+      this.logger.info(
+        {
+          participantId: conn.participantId,
+          connId,
+          totalConnections: this.connections.size - 1,
+        },
+        'WS_DISCONNECTED: Participant disconnected'
+      );
 
       // Update lastSeen and connected=false in the database so frontends can detect offline participants
       try {
@@ -441,7 +486,10 @@ export class WebSocketHub {
 
     // Also remove from telao connections if present
     if (this.telaoConnections.has(connId)) {
-      this.logger.debug({ connId }, 'Telao disconnected');
+      this.logger.info(
+        { connId, remainingTelaoConnections: this.telaoConnections.size - 1 },
+        'WS_TELAO_DISCONNECTED: Telao display disconnected'
+      );
       this.telaoConnections.delete(connId);
     }
   }
@@ -486,7 +534,8 @@ export class WebSocketHub {
   /**
    * Ping loop for dead connection detection.
    * Uses WebSocket protocol-level ping/pong frames (most efficient).
-   * Dead connections are detected and cleaned up within 2 ping cycles (~30s).
+   * Tolerates up to MAX_MISSED_PONGS consecutive misses before killing,
+   * which is critical for LLM-loaded machines with saturated CPUs.
    */
   private startPingLoop() {
     this.pingInterval = setInterval(() => {
@@ -494,13 +543,22 @@ export class WebSocketHub {
 
       for (const [connId, conn] of this.connections.entries()) {
         if (!conn.isAlive) {
-          // Connection didn't respond to last ping - it's dead
-          deadConnIds.push(connId);
-          this.logger.debug(
-            { participantId: conn.participantId },
-            'Dead connection detected via ping/pong'
+          conn.missedPongs++;
+
+          if (conn.missedPongs >= this.MAX_MISSED_PONGS) {
+            // Too many consecutive misses — connection is dead
+            deadConnIds.push(connId);
+            this.logger.warn(
+              { participantId: conn.participantId, connId, missedPongs: conn.missedPongs },
+              'WS_DEAD: Connection missed too many pongs — dropping'
+            );
+            continue;
+          }
+
+          this.logger.info(
+            { participantId: conn.participantId, connId, missedPongs: conn.missedPongs, maxMissed: this.MAX_MISSED_PONGS },
+            'WS_PONG_MISSED: Connection missed pong, will retry'
           );
-          continue;
         }
 
         // Mark as not alive, will be set true when pong received
@@ -511,9 +569,9 @@ export class WebSocketHub {
         } catch (error) {
           // Failed to send ping, connection is dead
           deadConnIds.push(connId);
-          this.logger.debug(
-            { participantId: conn.participantId, error },
-            'Failed to send ping, marking as dead'
+          this.logger.warn(
+            { participantId: conn.participantId, connId, error },
+            'WS_PING_FAILED: Failed to send ping, marking as dead'
           );
         }
       }

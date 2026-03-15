@@ -38,6 +38,11 @@ export default function Scoreboard() {
           fetch('/api/rounds/current'),
         ]);
 
+        if (scoreRes.status === 429 || roundRes.status === 429) {
+          console.warn('[Scoreboard] Rate limited, backing off');
+          return;
+        }
+
         if (scoreRes.ok) {
           const scoreData = await scoreRes.json();
           setData(scoreData);
@@ -55,7 +60,7 @@ export default function Scoreboard() {
     };
 
     fetchScoreboard();
-    const interval = setInterval(fetchScoreboard, 2000);
+    const interval = setInterval(fetchScoreboard, 5000);
 
     return () => clearInterval(interval);
   }, []);
@@ -590,7 +595,7 @@ export default function Scoreboard() {
             GAMBIARRA LLM CLUB ARENA
           </p>
           <p className="mt-2 text-gray-700 text-xs font-mono">
-            Atualização automática a cada 2s
+            Atualização automática a cada 5s
           </p>
         </div>
       </div>

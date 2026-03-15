@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import ParticipantCard from './ParticipantCard';
 import QRCodeGenerator from './QRCodeGenerator';
 
@@ -23,312 +23,390 @@ interface Round {
   liveTokens?: Record<string, string[]>;
 }
 
-interface TokenUpdate {
-  type: 'token_update';
-  participant_id: string;
-  round: number;
-  seq: number;
-  content: string;
-  total_tokens: number;
-}
-
-interface Completion {
-  type: 'completion';
-  participant_id: string;
-  round: number;
-  tokens: number;
-  duration_ms: number;
-  ttft_ms?: number | null;
-  tps?: number | null;
-}
-
 interface ParticipantState {
   tokens: number;
   isGenerating: boolean;
   content: string[];
-  tokensBySeq: Record<number, string>; // seq -> token for deduplication
-  currentRound?: number; // Track which round the tokens belong to
+  joinedContent: string; // Pre-computed join for ParticipantCard prop stability
+  tokensBySeq: Record<number, string>;
+  currentRound?: number;
   ttftMs?: number;
   tps?: number;
   durationMs?: number;
 }
+
+const EMPTY_STATE: ParticipantState = {
+  tokens: 0,
+  isGenerating: false,
+  content: [],
+  joinedContent: '',
+  tokensBySeq: {},
+};
+
+// Polling intervals (ms)
+const POLL_FAST = 3000;   // When WS is disconnected (fallback)
+const POLL_SLOW = 10000;  // When WS is connected (just consistency check)
 
 function Arena() {
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [currentRound, setCurrentRound] = useState<Round | null>(null);
   const [participantStates, setParticipantStates] = useState<Record<string, ParticipantState>>({});
   const [votingUrl, setVotingUrl] = useState('');
+  const [wsConnected, setWsConnected] = useState(false);
 
-  useEffect(() => {
-    // Fetch connected participants from authoritative presence endpoint
-    // Uses in-memory state on server (not database) for accurate live presence
-    const fetchPresence = () => {
-      fetch('/api/presence')
-        .then((res) => {
-          if (!res.ok) {
-            // Fall back to session endpoint if presence not available
-            return fetch('/api/session').then((r) => r.json()).then((data) => ({
-              participants: (data.participants || []).filter((p: Participant) => p.connected),
-            }));
+  // Token batching refs
+  const pendingTokens = useRef<Map<string, Map<number, string>>>(new Map());
+  const rafId = useRef<number | null>(null);
+
+  // WS reconnection refs
+  const wsRef = useRef<WebSocket | null>(null);
+  const reconnectAttemptsRef = useRef(0);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mountedRef = useRef(true);
+  const MAX_RECONNECT_ATTEMPTS = 20;
+
+  // Flush all buffered tokens in a single state update (called once per animation frame)
+  const flushTokens = useCallback(() => {
+    const batch = pendingTokens.current;
+    if (batch.size === 0) return;
+    pendingTokens.current = new Map();
+
+    setParticipantStates((prev) => {
+      const next = { ...prev };
+      for (const [pid, tokens] of batch) {
+        const existing = next[pid] || { ...EMPTY_STATE };
+
+        const newTokensBySeq = { ...existing.tokensBySeq };
+        let maxTotalTokens = existing.tokens;
+        let changed = false;
+
+        for (const [seq, content] of tokens) {
+          if (newTokensBySeq[seq] === undefined) {
+            newTokensBySeq[seq] = content;
+            changed = true;
           }
-          return res.json();
-        })
-        .then((data) => {
-          // Data from /presence is already filtered to connected participants
-          setParticipants(data.participants || []);
-        })
-        .catch((err) => console.error('Failed to fetch presence:', err));
+        }
+
+        if (!changed) continue;
+
+        // Rebuild content once per participant per frame
+        const sortedSeqs = Object.keys(newTokensBySeq).map(Number).sort((a, b) => a - b);
+        const newContent = sortedSeqs.map(s => newTokensBySeq[s]);
+        const joinedContent = newContent.join('');
+
+        // Use the largest total_tokens seen (from msg.total_tokens stored in the map value)
+        if (sortedSeqs.length > maxTotalTokens) {
+          maxTotalTokens = sortedSeqs.length;
+        }
+
+        next[pid] = {
+          ...existing,
+          tokens: maxTotalTokens,
+          isGenerating: true,
+          content: newContent,
+          joinedContent,
+          tokensBySeq: newTokensBySeq,
+        };
+      }
+      return next;
+    });
+  }, []);
+
+  // Fetch with 429 handling — returns null on rate limit
+  const safeFetch = useCallback(async (url: string): Promise<Response | null> => {
+    try {
+      const res = await fetch(url);
+      if (res.status === 429) {
+        console.warn(`[Arena] Rate limited on ${url}, backing off`);
+        return null;
+      }
+      return res;
+    } catch (err) {
+      console.error(`[Arena] Fetch failed: ${url}`, err);
+      return null;
+    }
+  }, []);
+
+  // Presence polling
+  useEffect(() => {
+    const fetchPresence = async () => {
+      const res = await safeFetch('/api/presence');
+      if (!res) return;
+
+      let data;
+      if (!res.ok) {
+        const fallback = await safeFetch('/api/session');
+        if (!fallback || !fallback.ok) return;
+        const sessionData = await fallback.json();
+        data = { participants: (sessionData.participants || []).filter((p: Participant) => p.connected) };
+      } else {
+        data = await res.json();
+      }
+      setParticipants(data.participants || []);
     };
 
     fetchPresence();
-    const presenceInterval = setInterval(fetchPresence, 2000);
+    const interval = setInterval(fetchPresence, wsConnected ? POLL_SLOW : POLL_FAST);
+    return () => clearInterval(interval);
+  }, [wsConnected, safeFetch]);
 
-    // Fetch current round (or latest round if none active)
-    const fetchRound = () => {
-      // First try to get active round
-      fetch('/api/rounds/current')
-        .then((res) => {
-          if (res.ok) return res.json();
-          // If no active round, fetch from session to get latest round
-          return fetch('/api/session')
-            .then((sessionRes) => sessionRes.json())
-            .then((sessionData) => {
-              const rounds = sessionData.rounds || [];
-              // Get the most recent round (highest index)
-              const latestRound = rounds.sort((a: Round, b: Round) => b.index - a.index)[0];
-              return latestRound || null;
-            });
-        })
-        .then((data) => {
-          if (!data) return;
+  // Round polling
+  useEffect(() => {
+    const fetchRound = async () => {
+      const res = await safeFetch('/api/rounds/current');
+      if (!res) return;
 
-          // Update current round
-          setCurrentRound(data);
+      let data;
+      if (res.ok) {
+        data = await res.json();
+      } else {
+        const sessionRes = await safeFetch('/api/session');
+        if (!sessionRes || !sessionRes.ok) return;
+        const sessionData = await sessionRes.json();
+        const rounds = sessionData.rounds || [];
+        const latestRound = rounds.sort((a: Round, b: Round) => b.index - a.index)[0];
+        data = latestRound || null;
+      }
 
-          // Only sync from polling if round is NOT actively generating
-          // During active generation, WebSocket handles updates exclusively
-          const isActivelyGenerating = data.startedAt && !data.endedAt;
-          if (data.liveTokens && !isActivelyGenerating) {
-            setParticipantStates((prevStates) => {
-              const newStates: Record<string, ParticipantState> = { ...prevStates };
-              for (const [pid, tokens] of Object.entries(data.liveTokens)) {
-                // Only update if we don't have this participant yet, or merge carefully
-                const existingState = newStates[pid];
-                if (!existingState) {
-                  // New participant - initialize from polling data
-                  const tokenArr = tokens as string[];
-                  const tokensBySeq: Record<number, string> = {};
-                  tokenArr.forEach((t, i) => { tokensBySeq[i] = t; });
-                  newStates[pid] = {
-                    tokens: tokenArr.length,
-                    isGenerating: !data.endedAt,
-                    content: tokenArr,
-                    tokensBySeq,
-                  };
-                } else {
-                  // Existing participant - preserve WebSocket state if it has more data
-                  // Polling should NOT overwrite WebSocket streaming data
-                  const newTokens = tokens as string[];
-                  const existingContent = existingState.content || [];
+      if (!data) return;
+      setCurrentRound(data);
 
-                  // Only use polling data if it has MORE tokens than what we have
-                  if (newTokens.length > existingContent.length) {
-                    const tokensBySeq: Record<number, string> = {};
-                    newTokens.forEach((t, i) => { tokensBySeq[i] = t; });
-                    newStates[pid] = {
-                      tokens: newTokens.length,
-                      isGenerating: existingState.isGenerating === false ? false : !data.endedAt,
-                      content: newTokens,
-                      tokensBySeq,
-                      ttftMs: existingState.ttftMs,
-                      tps: existingState.tps,
-                      durationMs: existingState.durationMs,
-                    };
-                  } else {
-                    // Keep existing state, just update isGenerating if round ended
-                    newStates[pid] = {
-                      ...existingState,
-                      isGenerating: existingState.isGenerating === false ? false : !data.endedAt,
-                    };
-                  }
-                }
+      // Only sync from polling if round is NOT actively generating
+      const isActivelyGenerating = data.startedAt && !data.endedAt;
+      if (data.liveTokens && !isActivelyGenerating) {
+        setParticipantStates((prevStates) => {
+          const newStates: Record<string, ParticipantState> = { ...prevStates };
+          for (const [pid, tokens] of Object.entries(data.liveTokens)) {
+            const existingState = newStates[pid];
+            if (!existingState) {
+              const tokenArr = tokens as string[];
+              const tokensBySeq: Record<number, string> = {};
+              tokenArr.forEach((t, i) => { tokensBySeq[i] = t; });
+              newStates[pid] = {
+                tokens: tokenArr.length,
+                isGenerating: !data.endedAt,
+                content: tokenArr,
+                joinedContent: tokenArr.join(''),
+                tokensBySeq,
+              };
+            } else {
+              const newTokens = tokens as string[];
+              const existingContent = existingState.content || [];
+              if (newTokens.length > existingContent.length) {
+                const tokensBySeq: Record<number, string> = {};
+                newTokens.forEach((t, i) => { tokensBySeq[i] = t; });
+                newStates[pid] = {
+                  tokens: newTokens.length,
+                  isGenerating: existingState.isGenerating === false ? false : !data.endedAt,
+                  content: newTokens,
+                  joinedContent: newTokens.join(''),
+                  tokensBySeq,
+                  ttftMs: existingState.ttftMs,
+                  tps: existingState.tps,
+                  durationMs: existingState.durationMs,
+                };
+              } else {
+                newStates[pid] = {
+                  ...existingState,
+                  isGenerating: existingState.isGenerating === false ? false : !data.endedAt,
+                };
               }
-              return newStates;
-            });
+            }
           }
-          // If round ended and we have no liveTokens, preserve existing states but mark as not generating
-          if (data.endedAt && !data.liveTokens) {
-            setParticipantStates((prevStates) => {
-              const newStates: Record<string, ParticipantState> = {};
-              for (const [pid, state] of Object.entries(prevStates)) {
-                // Preserve all state including metrics
-                newStates[pid] = { ...state, isGenerating: false };
-              }
-              return newStates;
-            });
+          return newStates;
+        });
+      }
+      if (data.endedAt && !data.liveTokens) {
+        setParticipantStates((prevStates) => {
+          const newStates: Record<string, ParticipantState> = {};
+          for (const [pid, state] of Object.entries(prevStates)) {
+            newStates[pid] = { ...state, isGenerating: false };
           }
-        })
-        .catch((err) => console.error('Failed to fetch round:', err));
+          return newStates;
+        });
+      }
     };
 
     fetchRound();
-    const interval = setInterval(fetchRound, 2000);
+    const interval = setInterval(fetchRound, wsConnected ? POLL_SLOW : POLL_FAST);
+    return () => clearInterval(interval);
+  }, [wsConnected, safeFetch]);
 
-    // Set voting URL
-    const baseUrl = window.location.origin;
-    setVotingUrl(`${baseUrl}/voting`);
-
-    return () => {
-      clearInterval(interval);
-      clearInterval(presenceInterval);
-    };
-  }, []);
-
-  // WebSocket for live updates (optional enhancement)
-  // This would listen to the /ws endpoint for real-time token updates
+  // Set voting URL
   useEffect(() => {
-    const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-    const wsUrl = `${wsProtocol}://${window.location.host}/ws`;
-    let ws: WebSocket | null = null;
+    setVotingUrl(`${window.location.origin}/voting`);
+  }, []);
 
-    try {
-      ws = new WebSocket(wsUrl);
-    } catch (err) {
-      console.error('Failed to open WebSocket to', wsUrl, err);
-      return;
-    }
+  // WebSocket with reconnection
+  useEffect(() => {
+    mountedRef.current = true;
 
-    ws.addEventListener('open', () => {
-      // Register as telao
-      ws!.send(JSON.stringify({ type: 'telao_register', view: 'arena' }));
-    });
+    const connectWs = () => {
+      if (!mountedRef.current) return;
 
-    ws.addEventListener('message', (ev) => {
+      const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+      const wsUrl = `${wsProtocol}://${window.location.host}/ws`;
+
+      let ws: WebSocket;
       try {
-        const msg = JSON.parse(ev.data);
-        console.log('[WS] Received:', msg.type, msg);
-
-        switch (msg.type) {
-          case 'token_update': {
-            const pid = msg.participant_id as string;
-            const seq = msg.seq as number;
-            const round = msg.round as number;
-            const tokenContent = msg.content as string;
-            setParticipantStates((prev) => {
-              const existingState = prev[pid] || { tokens: 0, isGenerating: false, content: [], tokensBySeq: {} };
-
-              // Check if round changed - if so, reset tokensBySeq
-              const roundChanged = existingState.currentRound !== undefined && existingState.currentRound !== round;
-              const existingTokensBySeq = roundChanged ? {} : (existingState.tokensBySeq || {});
-
-              // Skip if we already have this seq (duplicate)
-              if (existingTokensBySeq[seq] !== undefined) {
-                return prev;
-              }
-
-              // Add token to map
-              const newTokensBySeq = { ...existingTokensBySeq, [seq]: tokenContent };
-
-              // Rebuild content array from map (sorted by seq)
-              const sortedSeqs = Object.keys(newTokensBySeq).map(Number).sort((a, b) => a - b);
-              const newContent = sortedSeqs.map(s => newTokensBySeq[s]);
-
-              return {
-                ...prev,
-                [pid]: {
-                  ...existingState,
-                  tokens: msg.total_tokens,
-                  isGenerating: true,
-                  content: newContent,
-                  tokensBySeq: newTokensBySeq,
-                  currentRound: round,
-                },
-              };
-            });
-            break;
-          }
-          case 'completion': {
-            const pid = msg.participant_id as string;
-            setParticipantStates((prev) => {
-              const existingState = prev[pid] || { tokens: 0, isGenerating: false, content: [], tokensBySeq: {} };
-              // Return new state object (immutable update)
-              return {
-                ...prev,
-                [pid]: {
-                  ...existingState,
-                  tokens: msg.tokens,
-                  isGenerating: false,
-                  // Store server-calculated metrics
-                  ttftMs: msg.ttft_ms ?? existingState.ttftMs,
-                  tps: msg.tps ?? existingState.tps,
-                  durationMs: msg.duration_ms ?? existingState.durationMs,
-                },
-              };
-            });
-            break;
-          }
-          case 'participant_registered': {
-            const p = msg.participant as Participant;
-            setParticipants((prev) => {
-              const exists = prev.find((x) => x.id === p.id);
-              if (exists) {
-                return prev.map((x) => (x.id === p.id ? { ...x, ...p } : x));
-              }
-              return [...prev, p];
-            });
-            break;
-          }
-          case 'participant_disconnected': {
-            const pid = msg.participant_id as string;
-            setParticipants((prev) => prev.filter((p) => p.id !== pid));
-            setParticipantStates((prev) => {
-              const next = { ...prev };
-              delete next[pid];
-              return next;
-            });
-            break;
-          }
-          case 'round_started': {
-            const newRound = msg.round as number;
-            // Clear all participant content for the new round
-            setParticipantStates((prev) => {
-              const cleared: Record<string, ParticipantState> = {};
-              for (const [pid] of Object.entries(prev)) {
-                cleared[pid] = {
-                  tokens: 0,
-                  isGenerating: true,
-                  content: [],
-                  tokensBySeq: {},
-                  currentRound: newRound,
-                  // Clear metrics from previous round
-                  ttftMs: undefined,
-                  tps: undefined,
-                  durationMs: undefined,
-                };
-              }
-              return cleared;
-            });
-            break;
-          }
-          default:
-            break;
-        }
-      } catch (e) {
-        console.error('Invalid WS message', e);
+        ws = new WebSocket(wsUrl);
+      } catch (err) {
+        console.error('[Arena] Failed to create WebSocket:', err);
+        scheduleReconnect();
+        return;
       }
-    });
 
-    ws.addEventListener('close', () => {
-      console.info('Telao WS closed');
-    });
+      wsRef.current = ws;
+
+      ws.addEventListener('open', () => {
+        console.info('[Arena] WebSocket connected');
+        setWsConnected(true);
+        reconnectAttemptsRef.current = 0;
+        ws.send(JSON.stringify({ type: 'telao_register', view: 'arena' }));
+      });
+
+      ws.addEventListener('message', (ev) => {
+        try {
+          const msg = JSON.parse(ev.data);
+
+          switch (msg.type) {
+            case 'token_update': {
+              const pid = msg.participant_id as string;
+              const seq = msg.seq as number;
+              const tokenContent = msg.content as string;
+
+              // Buffer the token instead of updating state immediately
+              if (!pendingTokens.current.has(pid)) {
+                pendingTokens.current.set(pid, new Map());
+              }
+              pendingTokens.current.get(pid)!.set(seq, tokenContent);
+
+              // Schedule flush on next animation frame (batches all tokens)
+              if (rafId.current === null) {
+                rafId.current = requestAnimationFrame(() => {
+                  flushTokens();
+                  rafId.current = null;
+                });
+              }
+              break;
+            }
+            case 'completion': {
+              const pid = msg.participant_id as string;
+              // Flush any pending tokens before marking complete
+              if (pendingTokens.current.has(pid)) {
+                flushTokens();
+                if (rafId.current !== null) {
+                  cancelAnimationFrame(rafId.current);
+                  rafId.current = null;
+                }
+              }
+              setParticipantStates((prev) => {
+                const existingState = prev[pid] || { ...EMPTY_STATE };
+                return {
+                  ...prev,
+                  [pid]: {
+                    ...existingState,
+                    tokens: msg.tokens,
+                    isGenerating: false,
+                    ttftMs: msg.ttft_ms ?? existingState.ttftMs,
+                    tps: msg.tps ?? existingState.tps,
+                    durationMs: msg.duration_ms ?? existingState.durationMs,
+                  },
+                };
+              });
+              break;
+            }
+            case 'participant_registered': {
+              const p = msg.participant as Participant;
+              setParticipants((prev) => {
+                const exists = prev.find((x) => x.id === p.id);
+                if (exists) {
+                  return prev.map((x) => (x.id === p.id ? { ...x, ...p } : x));
+                }
+                return [...prev, p];
+              });
+              break;
+            }
+            case 'participant_disconnected': {
+              const pid = msg.participant_id as string;
+              setParticipants((prev) => prev.filter((p) => p.id !== pid));
+              setParticipantStates((prev) => {
+                const next = { ...prev };
+                delete next[pid];
+                return next;
+              });
+              break;
+            }
+            case 'round_started': {
+              const newRound = msg.round as number;
+              setParticipantStates((prev) => {
+                const cleared: Record<string, ParticipantState> = {};
+                for (const [pid] of Object.entries(prev)) {
+                  cleared[pid] = {
+                    ...EMPTY_STATE,
+                    isGenerating: true,
+                    currentRound: newRound,
+                  };
+                }
+                return cleared;
+              });
+              break;
+            }
+            default:
+              break;
+          }
+        } catch (e) {
+          console.error('[Arena] Invalid WS message', e);
+        }
+      });
+
+      ws.addEventListener('close', () => {
+        console.warn('[Arena] WebSocket disconnected');
+        setWsConnected(false);
+        wsRef.current = null;
+        scheduleReconnect();
+      });
+
+      ws.addEventListener('error', (err) => {
+        console.error('[Arena] WebSocket error', err);
+      });
+    };
+
+    const scheduleReconnect = () => {
+      if (!mountedRef.current) return;
+      if (reconnectAttemptsRef.current >= MAX_RECONNECT_ATTEMPTS) {
+        console.error(`[Arena] Max reconnection attempts (${MAX_RECONNECT_ATTEMPTS}) reached`);
+        return;
+      }
+
+      reconnectAttemptsRef.current++;
+      const delay = Math.min(1000 * Math.pow(2, reconnectAttemptsRef.current - 1), 10000);
+      console.info(`[Arena] Reconnecting in ${delay}ms (attempt ${reconnectAttemptsRef.current}/${MAX_RECONNECT_ATTEMPTS})`);
+
+      reconnectTimerRef.current = setTimeout(connectWs, delay);
+    };
+
+    connectWs();
 
     return () => {
-      if (ws && ws.readyState === WebSocket.OPEN) ws.close();
+      mountedRef.current = false;
+      if (rafId.current !== null) cancelAnimationFrame(rafId.current);
+      if (reconnectTimerRef.current !== null) clearTimeout(reconnectTimerRef.current);
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.close();
+      }
     };
-  }, []);
+  }, [flushTokens]);
 
   return (
     <div className="min-h-screen p-6 lg:p-8">
+      {/* WebSocket disconnected banner */}
+      {!wsConnected && (
+        <div className="fixed top-0 left-0 right-0 bg-red-600 text-white text-center py-2 font-mono text-sm z-50 animate-pulse">
+          DESCONECTADO DO SERVIDOR — Reconectando...
+        </div>
+      )}
+
       {/* Header */}
       <header className="mb-8 animate-fade-in">
         <div className="flex items-center justify-between mb-6">
@@ -481,12 +559,7 @@ function Arena() {
       {/* Participants grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 mb-10">
         {participants.map((participant, index) => {
-          const state = participantStates[participant.id] || {
-            tokens: 0,
-            isGenerating: false,
-            content: [],
-            tokensBySeq: {},
-          };
+          const state = participantStates[participant.id] || EMPTY_STATE;
 
           return (
             <div
@@ -499,7 +572,7 @@ function Arena() {
                 tokens={state.tokens}
                 maxTokens={currentRound?.maxTokens || 400}
                 isGenerating={state.isGenerating}
-                content={state.content.join('')}
+                content={state.joinedContent}
                 svgMode={currentRound?.svgMode || false}
                 ttftMs={state.ttftMs}
                 tps={state.tps}

@@ -72,6 +72,10 @@ function Voting() {
     try {
       // Get session to find the latest round
       const sessionRes = await fetch('/api/session');
+      if (sessionRes.status === 429) {
+        console.warn('[Voting] Rate limited, backing off');
+        return;
+      }
       if (!sessionRes.ok) {
         setError('Nenhuma sessão ativa');
         setLoading(false);
