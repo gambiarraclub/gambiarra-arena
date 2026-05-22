@@ -18,9 +18,13 @@ export default defineConfig({
         target: 'ws://localhost:3000',
         ws: true,
       },
-      // Serve the participant world client through the telao origin too, so
-      // both http://<host>:5173/agent and http://<host>:3000/agent work.
+      // Serve the participant clients through the telao origin too, so both
+      // :5173 and :3000 work for /agent (mundo) and /client (texto/SVG).
       '/agent': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
+      '/client': {
         target: 'http://localhost:3000',
         changeOrigin: true,
       },

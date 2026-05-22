@@ -1,4 +1,4 @@
-import Fastify from 'fastify';
+import Fastify, { type FastifyRequest, type FastifyReply } from 'fastify';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import websocket from '@fastify/websocket';
@@ -186,23 +186,29 @@ app.register(async (app) => {
   });
 });
 
-// Serve the participant world client (browser agent) at /agent
-// Exempt from rate limiting: it's a static page 25+ people load near-simultaneously.
-app.get('/agent', { config: { rateLimit: false } }, async (request, reply) => {
-  const candidates = [
-    path.join(import.meta.dirname ?? '.', '..', '..', 'client-browser', 'agent.html'),
-    path.join(process.cwd(), '..', 'client-browser', 'agent.html'),
-    path.join(process.cwd(), 'client-browser', 'agent.html'),
-  ];
-  for (const p of candidates) {
-    if (fs.existsSync(p)) {
-      reply.header('Content-Type', 'text/html; charset=utf-8');
-      return fs.readFileSync(p, 'utf-8');
+// Serve the participant browser clients from client-browser/.
+// Exempt from rate limiting: static pages 25+ people load near-simultaneously.
+//   /agent  -> agent.html  (Mundo de Agentes)
+//   /client -> client.html (modo desafio: texto / SVG)
+function serveBrowserClient(file: string) {
+  return async (_request: FastifyRequest, reply: FastifyReply) => {
+    const candidates = [
+      path.join(import.meta.dirname ?? '.', '..', '..', 'client-browser', file),
+      path.join(process.cwd(), '..', 'client-browser', file),
+      path.join(process.cwd(), 'client-browser', file),
+    ];
+    for (const p of candidates) {
+      if (fs.existsSync(p)) {
+        reply.header('Content-Type', 'text/html; charset=utf-8');
+        return fs.readFileSync(p, 'utf-8');
+      }
     }
-  }
-  reply.code(404);
-  return 'agent.html not found';
-});
+    reply.code(404);
+    return `${file} not found`;
+  };
+}
+app.get('/agent', { config: { rateLimit: false } }, serveBrowserClient('agent.html'));
+app.get('/client', { config: { rateLimit: false } }, serveBrowserClient('client.html'));
 
 // HTTP routes
 await setupRoutes(app, hub, roundManager, voteManager, metricsManager, worldEngine, eventLogger);

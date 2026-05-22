@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Gambiarra World — Agente</title>
+  <title>Gambiarra — Responder (texto/SVG)</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
@@ -22,7 +22,6 @@
       --success: #39FF14;
       --warning: #FFE66D;
       --error: #FF006E;
-      --purple: #9B5DE5;
       --border: #252B4D;
       --radius: 10px;
       --mono: 'JetBrains Mono','SF Mono','Fira Code',Consolas,monospace;
@@ -66,21 +65,12 @@
     legend { padding:0 .5rem; font-weight:700; color: var(--accent-2); font-size:.78rem; text-transform:uppercase; letter-spacing:.08em; }
     .fg { margin-bottom: .9rem; } .fg:last-child{ margin-bottom:0; }
     label { display:block; font-size:.82rem; color: var(--text-secondary); margin-bottom:.3rem; }
-    input, select, textarea {
+    input, select {
       width:100%; padding:.7rem; background: var(--bg-input); border:1px solid var(--border);
       border-radius:8px; color: var(--text-primary); font-size:.92rem; transition: border-color .15s;
     }
-    textarea { resize: vertical; min-height: 120px; font-family: inherit; line-height:1.5; }
-    input:focus, select:focus, textarea:focus { outline:none; border-color: var(--accent); }
-    input::placeholder, textarea::placeholder { color: var(--text-muted); }
-
-    .presets { display:flex; gap:.5rem; flex-wrap:wrap; margin-top:.5rem; }
-    .chip { padding:.35rem .7rem; border-radius:16px; font-size:.78rem; cursor:pointer; background: var(--bg-tertiary); border:1px solid var(--border); color: var(--text-secondary); }
-    .chip:hover { border-color: var(--accent-2); color: var(--accent-2); }
-
-    .emoji-row { display:flex; gap:.4rem; flex-wrap:wrap; }
-    .emoji-btn { font-size:1.4rem; width:44px; height:44px; border-radius:10px; background: var(--bg-tertiary); border:2px solid var(--border); cursor:pointer; display:flex; align-items:center; justify-content:center; }
-    .emoji-btn.sel { border-color: var(--accent); box-shadow: 0 0 12px rgba(255,107,53,.5); }
+    input:focus, select:focus { outline:none; border-color: var(--accent); }
+    input::placeholder { color: var(--text-muted); }
 
     #actions { margin-top:1.2rem; display:flex; gap:.8rem; flex-wrap:wrap; }
     button.btn { padding:.7rem 1.3rem; border-radius:8px; font-size:.95rem; font-weight:700; cursor:pointer; border:none; transition: all .15s; }
@@ -91,31 +81,23 @@
     .btn-secondary:hover { border-color: var(--accent-2); }
     .btn-danger { background: var(--error); color:#fff; }
 
-    /* Live agent panel */
     #live { display:none; }
     #live.on { display:block; }
-    .live-head { display:flex; align-items:center; gap:.8rem; padding:1rem 1.3rem; border-bottom:1px solid var(--border); }
-    .live-emoji { font-size:1.8rem; }
-    .stat-grid { display:grid; grid-template-columns: repeat(3,1fr); gap:.8rem; padding:1.1rem 1.3rem; }
+    .round-info { padding:1rem 1.3rem; border-bottom:1px solid var(--border); }
+    .round-info .rn { font-size:.78rem; color:var(--warning); text-transform:uppercase; letter-spacing:.05em; font-weight:700; }
+    .round-info .prompt { margin-top:.4rem; font-size:1.05rem; color:var(--text-primary); white-space:pre-wrap; }
+    .round-info .empty { color:var(--text-muted); font-style:italic; }
+    .stat-grid { display:grid; grid-template-columns: repeat(4, 1fr); gap:.8rem; padding:1.1rem 1.3rem; }
+    @media (max-width:560px){ .stat-grid{ grid-template-columns: repeat(2,1fr); } }
     .stat { text-align:center; padding:.8rem; background: var(--bg-tertiary); border-radius:8px; }
-    .stat .v { font-family: var(--mono); font-size:1.5rem; font-weight:800; color: var(--accent-2); }
+    .stat .v { font-family: var(--mono); font-size:1.4rem; font-weight:800; color: var(--accent-2); }
     .stat .l { font-size:.7rem; color: var(--text-muted); text-transform:uppercase; margin-top:.2rem; }
-    .io { padding: 0 1.3rem 1.1rem; display:flex; flex-direction:column; gap:.8rem; }
-    .io-box { background: var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:.8rem 1rem; }
-    .io-box .t { font-size:.7rem; text-transform:uppercase; letter-spacing:.06em; color: var(--text-muted); margin-bottom:.35rem; }
-    .io-box .radar { font-family: var(--mono); font-size:.86rem; color: var(--warning); }
-    .io-box .decision { font-family: var(--mono); font-size:1rem; }
-    .io-box .decision .dir { color: var(--success); font-weight:800; }
-    .io-box .decision .say { color: var(--text-secondary); }
-    .dbg { font-family: var(--mono); font-size:.78rem; white-space:pre-wrap; word-break:break-word; max-height:170px; overflow-y:auto; color:var(--text-secondary); margin-top:.35rem; background:var(--bg-primary); border:1px solid var(--border); border-radius:6px; padding:.5rem .7rem; }
-    #io-raw:empty::before { content:'(aguardando geração...)'; color:var(--text-muted); }
-
-    .manual { padding: 0 1.3rem 1.3rem; }
-    .manual-toggle { display:flex; align-items:center; gap:.6rem; margin-bottom:.8rem; font-size:.9rem; color: var(--text-secondary); }
-    .pad-grid { display:grid; grid-template-columns: repeat(3, 60px); grid-template-rows: repeat(3,60px); gap:.4rem; justify-content:center; }
-    .pad-grid button { font-size:1rem; border-radius:8px; background: var(--bg-tertiary); color: var(--text-primary); border:1px solid var(--border); cursor:pointer; font-weight:700; }
-    .pad-grid button:hover:not(:disabled){ border-color: var(--accent); color: var(--accent); }
-    .pad-grid button:disabled { opacity:.35; cursor:not-allowed; }
+    .out { padding: 0 1.3rem 1.3rem; }
+    .out .t { font-size:.7rem; text-transform:uppercase; letter-spacing:.06em; color: var(--text-muted); margin:.4rem 0; }
+    #token-stream { font-family: var(--mono); font-size:.84rem; white-space:pre-wrap; word-break:break-word; max-height:320px; overflow-y:auto; background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:.8rem 1rem; }
+    #token-stream:empty::before { content:'Aguardando desafio do administrador...'; color:var(--text-muted); font-style:italic; }
+    .svg-preview { width:100%; height:380px; border:0; border-radius:8px; background:#fff; margin-top:.8rem; display:none; }
+    .svg-preview.on { display:block; }
 
     details#logp { background: var(--bg-secondary); border-radius: var(--radius); border:1px solid var(--border); }
     details#logp summary { padding:.9rem 1.3rem; cursor:pointer; font-weight:600; color: var(--text-secondary); }
@@ -203,17 +185,7 @@
     .btn-mini:hover { border-color:var(--accent-2); box-shadow:var(--glow-cyan); }
     /* terminal-style readouts */
     #token-stream, .dbg { box-shadow: inset 0 0 44px -22px rgba(42,240,223,.30); }
-    /* world-client specifics */
-    .emoji-btn { transition:all .15s; }
-    .emoji-btn:hover { border-color:var(--accent-2); }
-    .emoji-btn.sel { border-color:var(--accent); box-shadow:0 0 14px rgba(255,122,61,.6); transform:translateY(-1px); }
-    .chip { font-family:var(--mono); }
-    .chip:hover { color:var(--accent-2); border-color:var(--accent-2); box-shadow:var(--glow-cyan); }
-    .io-box .t { font-family:var(--mono); }
-    #io-think-box .t { color:var(--purple); }
-    #io-think { color:#cbb8ff; }
-    .pad-grid button { font-family:var(--mono); transition:all .12s; }
-    .pad-grid button:hover:not(:disabled){ border-color:var(--accent); color:var(--accent); box-shadow:var(--glow-accent); }
+    #token-stream:not(:empty)::after { content:'▮'; color:var(--accent-2); animation:ga-blink 1s steps(1) infinite; }
     /* prompt-client specifics */
     .round-info .rn { font-family:var(--mono); letter-spacing:.1em; }
     .round-info .prompt { font-family:var(--display); }
@@ -222,7 +194,7 @@
 </head>
 <body>
   <header>
-    <h1>GAMBIARRA WORLD <small>— agente</small></h1>
+    <h1>GAMBIARRA <small>— responder (texto / SVG)</small></h1>
     <div id="status" class="status-badge s-disconnected">Desconectado</div>
   </header>
 
@@ -253,27 +225,8 @@
               <button type="button" id="btn-models" class="btn-mini" title="Recarregar a lista de modelos do LLM">⟳</button>
             </div>
           </div>
-          <div class="fg"><label for="temperature">Temperatura: <span id="temp-val">0.4</span></label>
-            <input id="temperature" type="range" min="0" max="1.2" step="0.1" value="0.4"></div>
-          <div class="fg" style="display:flex;align-items:flex-start;gap:.5rem;">
-            <input id="think" type="checkbox" checked style="width:auto;margin-top:.2rem;">
-            <label for="think" style="margin:0;">🧠 Deixar o modelo <b>pensar</b> (mostra o raciocínio ao vivo; mais lento, mas é a graça)</label>
-          </div>
         </fieldset>
       </div>
-
-      <fieldset style="margin-top:1.2rem;">
-        <legend>🧠 Seu agente</legend>
-        <div class="fg">
-          <label>Avatar</label>
-          <div class="emoji-row" id="emoji-row"></div>
-        </div>
-        <div class="fg">
-          <label for="strategy">Estratégia (como seu agente pensa)</label>
-          <textarea id="strategy" placeholder="Descreva como seu agente deve se comportar..."></textarea>
-          <div class="presets" id="presets"></div>
-        </div>
-      </fieldset>
 
       <div id="actions">
         <button id="btn-connect" class="btn btn-primary">Entrar na arena</button>
@@ -283,26 +236,20 @@
     </section>
 
     <section id="live">
-      <div class="live-head">
-        <span class="live-emoji" id="live-emoji">🤖</span>
-        <strong id="live-name">—</strong>
-        <span id="live-obj" style="color:var(--text-muted);font-size:.85rem;"></span>
+      <div class="round-info" id="round-info">
+        <div class="rn" id="rn">Aguardando rodada</div>
+        <div class="prompt empty" id="prompt">O administrador vai enviar um desafio em breve…</div>
       </div>
       <div class="stat-grid">
-        <div class="stat"><div class="v" id="st-score">0</div><div class="l">comidas</div></div>
-        <div class="stat"><div class="v" id="st-pulses">0</div><div class="l">radares</div></div>
-        <div class="stat"><div class="v" id="st-think">—</div><div class="l">decisão (ms)</div></div>
+        <div class="stat"><div class="v" id="st-tokens">0</div><div class="l">tokens</div></div>
+        <div class="stat"><div class="v" id="st-tps">0.0</div><div class="l">tokens/s</div></div>
+        <div class="stat"><div class="v" id="st-ttft">—</div><div class="l">1º token (ms)</div></div>
+        <div class="stat"><div class="v" id="st-dur">0.0</div><div class="l">duração (s)</div></div>
       </div>
-      <div class="io">
-        <div class="io-box"><div class="t">📡 Último radar (enviado pelo servidor)</div><div class="radar" id="io-radar">aguardando pulso...</div></div>
-        <div class="io-box"><div class="t">🎯 Decisão · <span id="io-parse" style="color:var(--text-muted)">—</span></div><div class="decision" id="io-decision"><span class="dir">—</span></div></div>
-        <div class="io-box"><div class="t">📤 Prompt enviado ao Ollama</div><pre class="dbg" id="io-prompt">—</pre></div>
-        <div class="io-box" id="io-think-box"><div class="t">🧠 Raciocínio do modelo (pensando...)</div><pre class="dbg" id="io-think"></pre></div>
-        <div class="io-box"><div class="t">📥 Resposta final (a direção)</div><pre class="dbg" id="io-raw"></pre></div>
-      </div>
-      <div class="manual">
-        <label class="manual-toggle"><input type="checkbox" id="manual-mode"> 🎮 Modo manual (controlar sem o LLM — bom pra testar)</label>
-        <div class="pad-grid" id="pad"></div>
+      <div class="out">
+        <div class="t">Resposta gerada (streaming)</div>
+        <div id="token-stream"></div>
+        <iframe class="svg-preview" id="svg-preview" sandbox title="Pré-visualização do SVG"></iframe>
       </div>
     </section>
 
@@ -316,74 +263,50 @@
     lmstudio: { defaultUrl:'http://localhost:1234' },
     llamacpp: { defaultUrl:'http://localhost:8080' },
   };
-  const STORAGE_KEY = 'gambiarra-world-client';
-  const EMOJIS = ['🤖','👾','🦊','🐸','🐙','🐵','🦄','🐲','🐱','🦉','🐺','🐢','🐝','🦖','🐧','🦅'];
-  const PRESETS = {
-    'Ganancioso': 'Você é guloso e direto. Vá SEMPRE na direção da comida mais próxima indicada pelo radar. Se não houver comida à vista, ande em linha reta para explorar até achar. Nunca fique parado.',
-    'Explorador': 'Você adora explorar. Priorize cobrir áreas novas da arena. Se vir comida perto, pegue; senão, varie bastante as direções para descobrir o mapa, evitando bater nas paredes.',
-    'Cauteloso': 'Você é cuidadoso. Vá atrás da comida mais próxima, mas evite chegar perto das paredes. Quando a comida estiver longe, aproxime-se aos poucos, um passo de cada vez.',
-  };
-
-  // Multi-letter direction words (unambiguous in PT/EN prose). Single-letter
-  // synonyms like "o"/"e"/"l" are intentionally NOT here — they collide with
-  // common Portuguese words. Order/length handled by earliest-index matching.
-  const stripAccents = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '');
-  const DIR_WORDS = [
-    ['NORDESTE','NE'],['NOROESTE','NW'],['SUDESTE','SE'],['SUDOESTE','SW'],
-    ['NORTE','N'],['SUL','S'],['LESTE','E'],['OESTE','W'],
-    ['NORTH','N'],['SOUTH','S'],['EAST','E'],['WEST','W'],
-    ['STAY','STAY'],['PARADO','STAY'],['PARAR','STAY'],['FICAR','STAY'],
-  ];
+  const STORAGE_KEY = 'gambiarra-prompt-client';
 
   function defaultServerHost() {
-    // When the arena server itself serves this page, prefill with the host the
-    // person already typed in the address bar — usually they type nothing more.
     if (location.protocol.startsWith('http') && location.hostname) return location.hostname;
     return 'localhost';
   }
-
-  // Turn a bare IP/hostname into the full WebSocket URL. Stays tolerant: also
-  // accepts a full ws://… / http://… URL or host:port, so nobody gets stuck.
+  // Aceita só o IP/hostname e monta a URL completa do WebSocket. Tolera também
+  // ws://… / http://… ou host:porta, pra ninguém travar.
   function buildWsUrl(input) {
     let s = (input || '').trim();
     if (!s) s = defaultServerHost();
-    if (/^wss?:\/\//i.test(s)) return s;                       // already a ws URL
-    if (/^https?:\/\//i.test(s)) {                             // http URL -> ws
+    if (/^wss?:\/\//i.test(s)) return s;
+    if (/^https?:\/\//i.test(s)) {
       try { const u = new URL(s); const pr = u.protocol === 'https:' ? 'wss' : 'ws';
         return `${pr}://${u.hostname}:${u.port || 3000}/ws`; } catch (e) { /* fall through */ }
     }
-    s = s.replace(/^\/+/, '').replace(/\/.*$/, '');            // strip any path, keep host[:port]
-    if (!/:\d+$/.test(s)) s += ':3000';                        // default to the server port
+    s = s.replace(/^\/+/, '').replace(/\/.*$/, '');
+    if (!/:\d+$/.test(s)) s += ':3000';
     return `ws://${s}/ws`;
   }
-
-  // Derive a stable participant id from the nickname (e.g. "João Silva" -> "joao-silva_id").
+  // ID estável derivado do apelido + sufixo aleatório por navegador (evita que
+  // dois apelidos iguais colidam e se derrubem).
   function deriveId(nick) {
     const slug = (nick || '').trim().toLowerCase()
       .normalize('NFD').replace(/[̀-ͯ]/g, '')
       .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 24);
-    // Short per-browser random suffix so two people with the SAME nickname don't
-    // collide on the same id and evict each other (critical with 25+ people).
     let rnd = '';
     try {
       rnd = localStorage.getItem('gambiarra-aid') || '';
       if (!rnd) { rnd = Math.random().toString(36).slice(2, 6); localStorage.setItem('gambiarra-aid', rnd); }
     } catch (e) { rnd = Math.random().toString(36).slice(2, 6); }
-    return (slug || 'agente') + '-' + rnd + '_id';
+    return (slug || 'jogador') + '-' + rnd + '_id';
   }
 
   // ============ STATE ============
   const S = {
     serverUrl: defaultServerHost(), pin:'', nickname:'',
     runner:'ollama', llmUrl: RUNNERS.ollama.defaultUrl, model:'',
-    temperature: 0.4, emoji:'🤖', strategy: PRESETS['Ganancioso'], think: true,
     // runtime
-    participantId:'', objective:'', score:0, pulses:0, manual:false, deciding:false, lastPulse:0,
+    participantId:'', generating:false, currentRound:null,
     save() {
       try { localStorage.setItem(STORAGE_KEY, JSON.stringify({
         serverUrl:this.serverUrl, pin:this.pin, nickname:this.nickname,
-        runner:this.runner, llmUrl:this.llmUrl, model:this.model, temperature:this.temperature,
-        emoji:this.emoji, strategy:this.strategy, think:this.think,
+        runner:this.runner, llmUrl:this.llmUrl, model:this.model,
       })); } catch(e){}
     },
     load() {
@@ -396,9 +319,9 @@
   const $ = (id) => document.getElementById(id);
   const Err = {
     show(msg, type='error', ms=null) {
-      const c = $('errors'); const a = document.createElement('div'); a.className = `alert alert-${type}`;
-      const s = document.createElement('span'); s.textContent = msg; a.appendChild(s);
-      const b = document.createElement('button'); b.innerHTML='&times;'; b.onclick=()=>a.remove(); a.appendChild(b);
+      const c=$('errors'); const a=document.createElement('div'); a.className=`alert alert-${type}`;
+      const s=document.createElement('span'); s.textContent=msg; a.appendChild(s);
+      const b=document.createElement('button'); b.innerHTML='&times;'; b.onclick=()=>a.remove(); a.appendChild(b);
       c.appendChild(a); if (ms || type!=='error') setTimeout(()=>a.remove(), ms||7000);
     },
     corsHelp(runner) {
@@ -410,10 +333,9 @@
     add(m,t='info'){ const el=$('log'); const d=document.createElement('div'); d.innerHTML=`<span style="color:var(--text-muted)">[${new Date().toLocaleTimeString()}]</span> <span class="lt-${t}">${m}</span>`; el.appendChild(d); el.scrollTop=el.scrollHeight; },
     info(m){this.add(m,'info')}, ok(m){this.add(m,'success')}, warn(m){this.add(m,'warning')}, err(m){this.add(m,'error')},
   };
-
   function setStatus(state) {
     const map = { disconnected:['Desconectado','s-disconnected'], connecting:['Conectando...','s-connecting'],
-      connected:['Na arena','s-connected'], playing:['Jogando','s-playing'], error:['Erro','s-error'] };
+      connected:['Na arena','s-connected'], playing:['Gerando...','s-playing'], error:['Erro','s-error'] };
     const [txt,cls] = map[state]||map.disconnected;
     const b=$('status'); b.className='status-badge '+cls; b.textContent=txt;
     const conn = state==='connected'||state==='playing';
@@ -434,19 +356,16 @@
         const d = await r.json(); Log.ok(`Ollama ok. Modelos: ${d.models?.map(m=>m.name).join(', ')||'nenhum'}`); }
       catch(e){ if(e.message.includes('fetch')||e.name==='TypeError'){ Err.corsHelp('ollama'); throw new Error(`Sem conexão com Ollama em ${this.baseUrl}.`);} throw e; }
     }
-    async generate(prompt, opts, onToken, onThinking){
-      // Reasoning ("thinking") models (qwen3, gemma thinking variants) split their
-      // output: reasoning streams in `thinking`, the actual answer in `response`.
-      // With think ON we MUST give a generous num_predict, else the model burns the
-      // whole budget reasoning and `response` comes back EMPTY → no decision → STAY.
-      const think = opts.think !== false;
+    async generate(prompt, opts, onToken){
+      // think:false: queremos o CONTEÚDO (texto/SVG) direto, sem gastar tokens
+      // "pensando" (modelos de raciocínio deixariam o response vazio/curto).
       const r = await fetch(`${this.baseUrl}/api/generate`, { method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ model:this.model, prompt, stream:true, think, options:{ num_predict:opts.maxTokens||(think?512:64), temperature:opts.temperature??0.4 } }) });
+        body: JSON.stringify({ model:this.model, prompt, stream:true, think:false, options:{ num_predict:opts.maxTokens||400, temperature:opts.temperature??0.8, seed:opts.seed } }) });
       if(!r.ok) throw new Error('Ollama '+r.status+': '+await r.text());
-      const rd = r.body.getReader(); const dec = new TextDecoder(); let buf='';
+      const rd=r.body.getReader(); const dec=new TextDecoder(); let buf='';
       while(true){ const {done,value}=await rd.read(); if(done) break; buf+=dec.decode(value,{stream:true});
         const lines=buf.split('\n'); buf=lines.pop()||'';
-        for(const ln of lines){ if(!ln.trim()) continue; try{ const j=JSON.parse(ln); if(j.thinking && onThinking) onThinking(j.thinking); if(j.response) onToken(j.response); if(j.done) return; }catch(e){} } }
+        for(const ln of lines){ if(!ln.trim()) continue; try{ const j=JSON.parse(ln); if(j.response) onToken(j.response); if(j.done) return; }catch(e){} } }
     }
   }
   class LMStudioRunner extends BaseRunner {
@@ -456,8 +375,8 @@
       catch(e){ if(e.message.includes('fetch')||e.name==='TypeError'){ Err.corsHelp('lmstudio'); throw new Error(`Sem conexão com LM Studio em ${this.baseUrl}.`);} throw e; }
     }
     async generate(prompt, opts, onToken){
-      const r = await fetch(`${this.baseUrl}/v1/completions`, { method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ model:this.model, prompt, max_tokens:opts.maxTokens||48, temperature:opts.temperature??0.4, stream:true }) });
+      const r=await fetch(`${this.baseUrl}/v1/completions`, { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ model:this.model, prompt, max_tokens:opts.maxTokens||400, temperature:opts.temperature??0.8, seed:opts.seed, stream:true }) });
       if(!r.ok) throw new Error('LM Studio '+r.status+': '+await r.text());
       const rd=r.body.getReader(); const dec=new TextDecoder(); let buf='';
       while(true){ const {done,value}=await rd.read(); if(done) break; buf+=dec.decode(value,{stream:true});
@@ -471,7 +390,7 @@
       catch(e){ if(e.message.includes('fetch')||e.name==='TypeError'){ Err.corsHelp('llamacpp'); throw new Error(`Sem conexão com llama.cpp em ${this.baseUrl}.`);} throw e; } }
     async generate(prompt, opts, onToken){
       const r=await fetch(`${this.baseUrl}/completion`, { method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ prompt, n_predict:opts.maxTokens||48, temperature:opts.temperature??0.4, stream:true }) });
+        body: JSON.stringify({ prompt, n_predict:opts.maxTokens||400, temperature:opts.temperature??0.8, seed:opts.seed??-1, stream:true }) });
       if(!r.ok) throw new Error('llama.cpp '+r.status+': '+await r.text());
       const rd=r.body.getReader(); const dec=new TextDecoder(); let buf='';
       while(true){ const {done,value}=await rd.read(); if(done) break; buf+=dec.decode(value,{stream:true});
@@ -503,68 +422,24 @@
     Log.ok(`${names.length} modelo(s) carregado(s) do ${S.runner}`);
   }
 
-  // ============ DECISION PARSING ============
-  // Tolerant: small local models ramble and rarely emit clean JSON. We look for
-  // the direction in the command part (before any "|"), trying the explicit
-  // MOVE: format first, then quoted values, direction words, and finally short
-  // bare codes. The "say" (thought bubble) is whatever follows "|".
-  function parseDecision(text) {
-    const full = stripAccents(text).toUpperCase();
-    const pipe = text.indexOf('|');
-    const cmd = stripAccents(pipe >= 0 ? text.slice(0, pipe) : text).toUpperCase();
-    let dir = null, m;
-    // 1) quoted value (covers JSON-ish output: direction: "SE")
-    if ((m = full.match(/["']\s*(STAY|NE|NW|SE|SW|N|S|E|W)\s*["']/))) dir = m[1];
-    // 2) labelled command: MOVE/DIR/DECISÃO/VOU [para] <dir>
-    if (!dir && (m = cmd.match(/(?:MOVE|DIR|DIRECAO|DECISAO|VOU|IR)\s*:?\s*(?:PARA\s+|PRO\s+|AO\s+)?(STAY|NE|NW|SE|SW|N|S|E|W)\b/))) dir = m[1];
-    // 3) unambiguous direction words
-    if (!dir) { let first = Infinity; for (const [w, d] of DIR_WORDS) { const i = cmd.indexOf(w); if (i >= 0 && i < first) { first = i; dir = d; } } }
-    // 4) 2-letter codes that are not PT words (NE/NW/SW; SE handled above only)
-    if (!dir && (m = cmd.match(/\b(NE|NW|SW)\b/))) dir = m[1];
-    // 5) short bare response like "S" or "NE"
-    if (!dir) { const t = cmd.trim(); if (t.length <= 14) { const r = t.match(/\b(NE|NW|SE|SW|N|S|E|W|STAY)\b/); if (r) dir = r[1]; } }
-
-    let say = '';
-    if (pipe >= 0) say = text.slice(pipe + 1);
-    else say = text.replace(/(?:MOVE|DIR|DIRECAO|DECISAO)\s*:?\s*[A-Za-zÀ-ú]{1,9}/i, '');
-    say = say.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60);
-    return { dir, say };
-  }
-
-  function buildPrompt(p, strategy) {
-    return [
-      'Você controla um agente em uma arena 2D vista de cima (estilo radar/bússola).',
-      `OBJETIVO DO JOGO: ${p.objective}`,
-      `SUA ESTRATÉGIA: ${strategy}`,
-      '',
-      p.radar_text,
-      '',
-      'Dê o próximo passo escolhendo UMA direção da bússola:',
-      'N (norte), NE (nordeste), E (leste), SE (sudeste), S (sul), SW (sudoeste), W (oeste), NW (noroeste). Use STAY só para ficar parado.',
-      'Responda em UMA linha, começando com "MOVE:" seguido da direção e um comentário curto.',
-      'Exemplo: MOVE: NE | indo atrás da comida',
-      'Sua resposta:',
-    ].join('\n');
-  }
-
-  // ============ WS CLIENT ============
-  class WorldClient {
-    constructor(){ this.ws=null; this.attempts=0; this.shouldReconnect=true; this.onPerception=null; this.onRegistered=null; this.onError=null; this.onClose=null; }
+  // ============ WS CLIENT (modo desafio) ============
+  class PromptClient {
+    constructor(){ this.ws=null; this.attempts=0; this.shouldReconnect=true; this.onChallenge=null; this.onRegistered=null; this.onError=null; this.onClose=null; }
     connect(url){
       return new Promise((res,rej)=>{
         this.shouldReconnect=true;
-        try { this.ws = new WebSocket(url); } catch(e){ rej(new Error('URL inválida')); return; }
-        const to = setTimeout(()=>{ rej(new Error('Timeout ao conectar')); this.ws?.close(); }, 15000);
-        this.ws.onopen = ()=>{ clearTimeout(to); this.attempts=0; Log.ok('WebSocket conectado'); res(); };
-        this.ws.onmessage = (ev)=>{ try{ this.handle(JSON.parse(ev.data)); }catch(e){ Log.err('parse: '+e.message); } };
-        this.ws.onclose = (e)=>{ Log.warn('WS fechado: '+e.code); this.onClose?.(); if(this.shouldReconnect) this.reconnect(url); };
-        this.ws.onerror = ()=>{ clearTimeout(to); rej(new Error('Erro ao conectar ao servidor')); };
+        try { this.ws=new WebSocket(url); } catch(e){ rej(new Error('URL inválida')); return; }
+        const to=setTimeout(()=>{ rej(new Error('Timeout ao conectar')); this.ws?.close(); }, 15000);
+        this.ws.onopen=()=>{ clearTimeout(to); this.attempts=0; Log.ok('WebSocket conectado'); res(); };
+        this.ws.onmessage=(ev)=>{ try{ this.handle(JSON.parse(ev.data)); }catch(e){ Log.err('parse: '+e.message); } };
+        this.ws.onclose=(e)=>{ Log.warn('WS fechado: '+e.code); this.onClose?.(); if(this.shouldReconnect) this.reconnect(url); };
+        this.ws.onerror=()=>{ clearTimeout(to); rej(new Error('Erro ao conectar ao servidor')); };
       });
     }
     handle(m){
       switch(m.type){
         case 'registered': this.onRegistered?.(m); break;
-        case 'perception': this.onPerception?.(m); break;
+        case 'challenge': this.onChallenge?.(m); break;
         case 'error': Log.err('servidor: '+m.message); this.onError?.(m); break;
         case 'heartbeat': case 'registered_telao': break;
         default: break;
@@ -572,173 +447,140 @@
     }
     send(d){ if(this.ws?.readyState===WebSocket.OPEN) this.ws.send(JSON.stringify(d)); }
     register(){ this.send({ type:'register', participant_id:S.participantId, nickname:S.nickname, pin:S.pin, runner:S.runner, model:S.model }); }
-    join(){ this.send({ type:'world_join', participant_id:S.participantId, emoji:S.emoji }); Log.info('Entrou no mundo'); }
-    action(dir, say, pulse){ this.send({ type:'agent_action', participant_id:S.participantId, direction:dir, say, pulse }); }
+    sendToken(round, seq, content){ this.send({ type:'token', round, participant_id:S.participantId, seq, content }); }
+    sendComplete(round, tokens, latencyMs, durationMs){ this.send({ type:'complete', round, participant_id:S.participantId, tokens, latency_ms_first_token:latencyMs??undefined, duration_ms:durationMs, model_info:{ name:S.model, runner:S.runner, device:'browser' } }); }
+    sendError(round, code, message){ this.send({ type:'error', round, participant_id:S.participantId, code, message }); }
     reconnect(url){
       if(this.attempts>=15){ Log.err('Máximo de reconexões'); setStatus('error'); return; }
       this.attempts++; const delay=Math.min(1000*2**(this.attempts-1),15000); Log.warn(`Reconectando em ${delay}ms`);
-      setTimeout(()=>{ if(this.shouldReconnect) this.connect(url).then(()=>{ this.register(); }).catch(e=>Log.err('reconexão: '+e.message)); }, delay);
+      setTimeout(()=>{ if(this.shouldReconnect) this.connect(url).then(()=>this.register()).catch(e=>Log.err('reconexão: '+e.message)); }, delay);
     }
     disconnect(){ this.shouldReconnect=false; this.ws?.close(); this.ws=null; }
   }
 
   // ============ APP ============
-  const client = new WorldClient();
+  const client = new PromptClient();
   let runner = null;
 
-  async function decide(p) {
-    if (S.deciding) return;
-    S.deciding = true; setStatus('playing');
-    const prompt = buildPrompt(p, S.strategy);
-    $('io-prompt').textContent = prompt;
-    $('io-raw').textContent = '';
-    $('io-think').textContent = '';
-    $('io-think-box').style.display = S.think ? '' : 'none';
-    const t0 = performance.now();
-    let text = '', thinking = '';
-    try {
-      // Stream reasoning + final answer separately into the debug boxes so you
-      // can watch the model think and then commit to a direction.
-      await runner.generate(
-        prompt,
-        { maxTokens: S.think ? 512 : 64, temperature: S.temperature, think: S.think },
-        (tok) => { text += tok; const el = $('io-raw'); el.textContent = text; el.scrollTop = el.scrollHeight; },
-        (th) => { thinking += th; const el = $('io-think'); el.textContent = thinking; el.scrollTop = el.scrollHeight; }
-      );
-    } catch(e) {
-      Log.err('geração falhou: '+e.message); Err.show('Erro na geração: '+e.message,'error',6000);
-      $('io-parse').textContent = 'erro na geração'; $('io-parse').style.color = 'var(--error)';
-      S.deciding=false; return;
-    }
-    const ms = Math.round(performance.now()-t0);
-    // Prefer the final answer; if it's empty (model ran out of budget while
-    // thinking), fall back to extracting a direction from the reasoning itself.
-    let { dir, say } = parseDecision(text);
-    let fromThinking = false;
-    if (!dir && thinking) {
-      const t = parseDecision(thinking);
-      if (t.dir) { dir = t.dir; say = say || t.say; fromThinking = true; }
-    }
-    const finalDir = dir || 'STAY';
-    const finalSay = (say || (dir ? '' : '🤔')).slice(0, 60);
-    client.action(finalDir, finalSay, p.pulse);
-    $('st-think').textContent = ms;
-    $('io-decision').innerHTML = `<span class="dir">${finalDir}</span> <span class="say">${finalSay?('· '+finalSay):''}</span>`;
-    if (dir && !fromThinking) { $('io-parse').textContent = `✓ direção reconhecida: ${dir}`; $('io-parse').style.color = 'var(--success)'; }
-    else if (dir && fromThinking) { $('io-parse').textContent = `✓ ${dir} (extraída do raciocínio — resposta final veio vazia)`; $('io-parse').style.color = 'var(--warning)'; }
-    else { $('io-parse').textContent = '✗ nenhuma direção reconhecida → STAY (tente aumentar tokens ou simplificar a estratégia)'; $('io-parse').style.color = 'var(--error)'; }
-    console.group(`%c🤖 decisão #${p.pulse} → ${finalDir} (${ms}ms)`, 'color:#00F5D4;font-weight:bold');
-    console.log('%cPROMPT:%c\n'+prompt, 'color:#FFE66D;font-weight:bold', 'color:inherit');
-    if (thinking) console.log('%cRACIOCÍNIO:%c\n'+thinking, 'color:#9B5DE5;font-weight:bold', 'color:inherit');
-    console.log('%cRESPOSTA final:%c\n'+JSON.stringify(text), 'color:#39FF14;font-weight:bold', 'color:inherit');
-    console.log('%cPARSE:%c', 'color:#FF6B35;font-weight:bold', 'color:inherit', { dir, say, finalDir, fromThinking });
-    console.groupEnd();
-    Log.info(`#${p.pulse} → ${finalDir} (${ms}ms${S.think?', com raciocínio':''})`);
-    S.deciding = false;
+  function setStat(tokens, tps, ttft, dur) {
+    $('st-tokens').textContent = tokens;
+    $('st-tps').textContent = (typeof tps==='number'?tps:0).toFixed(1);
+    $('st-ttft').textContent = ttft;
+    $('st-dur').textContent = dur;
   }
 
-  function onPerception(p) {
-    S.pulses++; S.score = p.score; S.objective = p.objective;
-    $('st-pulses').textContent = S.pulses;
-    $('st-score').textContent = S.score;
-    $('io-radar').textContent = p.radar_text;
-    $('live-obj').textContent = '🎯 ' + p.objective;
-    S.lastPulse = p.pulse;
-    if (S.manual) return; // manual mode: wait for buttons
-    decide(p);
+  function maybeRenderSvg(text) {
+    const i = text.indexOf('<svg');
+    if (i < 0) return;
+    const j = text.lastIndexOf('</svg>');
+    const svg = j > i ? text.slice(i, j + 6) : text.slice(i);
+    const el = $('svg-preview');
+    // Render inside a sandboxed iframe (no allow-scripts) so any scripts/handlers
+    // embedded in the model-generated SVG can't run against this page.
+    el.srcdoc = '<!doctype html><meta charset="utf-8">'
+      + '<style>html,body{margin:0;height:100%;display:flex;align-items:center;justify-content:center;background:#fff}svg{max-width:100%;max-height:100%;height:auto}</style>'
+      + svg;
+    el.classList.add('on');
+  }
+
+  async function handleChallenge(ch) {
+    if (S.generating) { Log.warn('já estou gerando, ignorando novo desafio'); return; }
+    S.generating = true; setStatus('playing'); S.currentRound = ch.round;
+    $('rn').textContent = 'Rodada ' + ch.round;
+    $('prompt').textContent = ch.prompt; $('prompt').classList.remove('empty');
+    $('token-stream').textContent = '';
+    $('svg-preview').classList.remove('on'); $('svg-preview').srcdoc = '';
+    setStat(0, 0, '—', '0.0');
+
+    let seq = 0, firstTokenTime = null, text = '';
+    const start = Date.now();
+    const deadline = setTimeout(() => {
+      if (S.generating) { Log.warn('deadline atingido — parando'); S.generating = false; }
+    }, ch.deadline_ms || 90000);
+
+    try {
+      await runner.generate(ch.prompt, { maxTokens: ch.max_tokens, temperature: ch.temperature, seed: ch.seed }, (tok) => {
+        if (!S.generating) return;
+        const now = Date.now();
+        if (firstTokenTime === null) { firstTokenTime = now; Log.info(`1º token em ${now - start}ms`); }
+        client.sendToken(ch.round, seq, tok); seq++;
+        text += tok;
+        const el = $('token-stream'); el.textContent = text; el.scrollTop = el.scrollHeight;
+        const dur = (now - start) / 1000;
+        setStat(seq, dur > 0 ? seq / dur : 0, firstTokenTime ? (firstTokenTime - start) : '—', dur.toFixed(1));
+      });
+      clearTimeout(deadline);
+      const durationMs = Date.now() - start;
+      const latencyMs = firstTokenTime ? firstTokenTime - start : null;
+      client.sendComplete(ch.round, seq, latencyMs, durationMs);
+      setStat(seq, durationMs > 0 ? (seq / (durationMs / 1000)) : 0, latencyMs ?? '—', (durationMs / 1000).toFixed(1));
+      maybeRenderSvg(text);
+      Log.ok(`completo: ${seq} tokens em ${(durationMs / 1000).toFixed(1)}s`);
+      Err.show(`Resposta enviada: ${seq} tokens`, 'success', 4000);
+      setStatus('connected');
+    } catch (e) {
+      clearTimeout(deadline);
+      Log.err('geração falhou: ' + e.message);
+      client.sendError(ch.round, 'GENERATION_FAILED', e.message);
+      Err.show('Erro na geração: ' + e.message, 'error');
+      setStatus('connected');
+    } finally {
+      S.generating = false;
+    }
   }
 
   async function connect() {
-    if(!S.nickname.trim()){ Err.show('Informe o apelido'); return; }
-    if(!S.pin){ Err.show('Informe o PIN da sessão'); return; }
-    if(!S.model){ Err.show('Selecione um modelo (clique ⟳ se a lista estiver vazia)'); return; }
-    if(!S.strategy.trim()){ Err.show('Escreva a estratégia do agente'); return; }
-    S.participantId = deriveId(S.nickname); // id derivado do apelido (ex.: joao-silva_id)
+    if (!S.nickname.trim()) { Err.show('Informe o apelido'); return; }
+    if (!S.pin) { Err.show('Informe o PIN da sessão'); return; }
+    if (!S.model) { Err.show('Selecione um modelo (clique ⟳ se a lista estiver vazia)'); return; }
+    S.participantId = deriveId(S.nickname);
     setStatus('connecting');
     try {
       runner = makeRunner(S.runner, S.llmUrl, S.model);
-      // LLM test is non-fatal: a flaky/absent LLM shouldn't block joining the
-      // arena (manual mode still works, and per-decision errors are handled).
       Log.info('Testando LLM...');
       try { await runner.test(); }
-      catch(e) { Log.warn('LLM indisponível: '+e.message+' — entrando mesmo assim (use o modo manual).'); Err.show('LLM não respondeu. Você pode jogar no modo manual.', 'warning', 6000); }
-      Log.info('Conectando à arena...'); await client.connect(buildWsUrl(S.serverUrl));
+      catch (e) { Log.warn('LLM indisponível: ' + e.message); Err.show('LLM não respondeu — verifique URL/CORS. Vou conectar mesmo assim.', 'warning', 6000); }
+      Log.info('Conectando à arena...');
+      await client.connect(buildWsUrl(S.serverUrl));
       client.register();
-    } catch(e) { setStatus('error'); Err.show(e.message); Log.err(e.message); }
+    } catch (e) { setStatus('error'); Err.show(e.message); Log.err(e.message); }
   }
 
-  function disconnect(){ client.disconnect(); setStatus('disconnected'); S.deciding=false; }
+  function disconnect() { client.disconnect(); setStatus('disconnected'); S.generating = false; }
 
-  // ---- UI wiring ----
-  function bindInputs(){
+  function bindInputs() {
     const map = { 'server-url':'serverUrl','pin':'pin','nickname':'nickname','runner':'runner','llm-url':'llmUrl','model':'model' };
-    for (const [id,key] of Object.entries(map)) {
-      const el=$(id); el.value = S[key]||'';
-      el.addEventListener('input', ()=>{ S[key]=el.value; S.save(); });
-      el.addEventListener('change', ()=>{ S[key]=el.value; S.save(); });
+    for (const [id, key] of Object.entries(map)) {
+      const el = $(id); el.value = S[key] || '';
+      el.addEventListener('input', () => { S[key] = el.value; S.save(); });
+      el.addEventListener('change', () => { S[key] = el.value; S.save(); });
     }
-    $('runner').addEventListener('change', e=>{ const u=RUNNERS[e.target.value]?.defaultUrl; if(u){ $('llm-url').value=u; S.llmUrl=u; S.save(); } loadModels(); });
+    $('runner').addEventListener('change', e => { const u = RUNNERS[e.target.value]?.defaultUrl; if (u) { $('llm-url').value = u; S.llmUrl = u; S.save(); } loadModels(); });
     $('llm-url').addEventListener('change', loadModels);
     // Trocar o modelo no dropdown vale na hora, sem reconectar.
     $('model').addEventListener('change', () => { if (runner) { runner.model = S.model; Log.info('Modelo trocado para: ' + S.model); } });
-    const temp=$('temperature'); temp.value=S.temperature; $('temp-val').textContent=Number(S.temperature).toFixed(1);
-    temp.addEventListener('input', ()=>{ S.temperature=parseFloat(temp.value); $('temp-val').textContent=S.temperature.toFixed(1); S.save(); });
-    const strat=$('strategy'); strat.value=S.strategy;
-    strat.addEventListener('input', ()=>{ S.strategy=strat.value; S.save(); });
-    const think=$('think'); think.checked = S.think !== false;
-    think.addEventListener('change', ()=>{ S.think=think.checked; S.save(); });
   }
-  function buildEmojiPicker(){
-    const row=$('emoji-row');
-    EMOJIS.forEach(e=>{ const b=document.createElement('button'); b.type='button'; b.className='emoji-btn'+(e===S.emoji?' sel':''); b.textContent=e;
-      b.onclick=()=>{ S.emoji=e; S.save(); document.querySelectorAll('.emoji-btn').forEach(x=>x.classList.remove('sel')); b.classList.add('sel'); $('live-emoji').textContent=e;
-        if(client.ws?.readyState===WebSocket.OPEN) client.join(); };
-      row.appendChild(b); });
-  }
-  function buildPresets(){
-    const c=$('presets');
-    Object.keys(PRESETS).forEach(name=>{ const b=document.createElement('button'); b.type='button'; b.className='chip'; b.textContent=name;
-      b.onclick=()=>{ S.strategy=PRESETS[name]; $('strategy').value=PRESETS[name]; S.save(); }; c.appendChild(b); });
-  }
-  function buildPad(){
-    const layout=[['NW','N','NE'],['W','STAY','E'],['SW','S','SE']];
-    const symbols={NW:'↖',N:'↑',NE:'↗',W:'←',STAY:'•',E:'→',SW:'↙',S:'↓',SE:'↘'};
-    const pad=$('pad');
-    layout.flat().forEach(dir=>{ const b=document.createElement('button'); b.type='button'; b.dataset.dir=dir; b.textContent=symbols[dir]; b.title=dir;
-      b.onclick=()=>{ if(!S.manual) return; client.action(dir,'manual',S.lastPulse); $('io-decision').innerHTML=`<span class="dir">${dir}</span> <span class="say">· manual</span>`; };
-      pad.appendChild(b); });
-    refreshPad();
-  }
-  function refreshPad(){ document.querySelectorAll('#pad button').forEach(b=>{ b.disabled = !S.manual; }); }
 
-  function init(){
+  function init() {
     S.load();
-    if(!S.serverUrl) S.serverUrl=defaultServerHost();
-    bindInputs(); buildEmojiPicker(); buildPresets(); buildPad();
+    if (!S.serverUrl) S.serverUrl = defaultServerHost();
+    bindInputs();
     loadModels();
-    $('live-emoji').textContent=S.emoji;
 
-    client.onRegistered = ()=>{ setStatus('connected'); $('live-name').textContent=S.nickname; Err.show('Na arena! Aguardando radar...','success',3000); client.join(); };
-    client.onError = (m)=>{ if(m.message?.includes('PIN')){ Err.show('PIN inválido.','error'); disconnect(); } else Err.show(m.message||'Erro','error'); };
-    client.onClose = ()=>{ if($('status').textContent!=='Desconectado') setStatus('connecting'); };
-    client.onPerception = onPerception;
+    client.onRegistered = () => { setStatus('connected'); Err.show('Na arena! Aguardando o desafio…', 'success', 3000); };
+    client.onError = (m) => { if (m.message?.includes('PIN')) { Err.show('PIN inválido.', 'error'); disconnect(); } else Err.show(m.message || 'Erro', 'error'); };
+    client.onClose = () => { if ($('status').textContent !== 'Desconectado') setStatus('connecting'); };
+    client.onChallenge = handleChallenge;
 
     $('btn-connect').onclick = connect;
     $('btn-disconnect').onclick = disconnect;
-    $('btn-test').onclick = async ()=>{ const b=$('btn-test'); b.disabled=true; b.textContent='Testando...';
-      try{ await makeRunner(S.runner,S.llmUrl,S.model).test(); Err.show('LLM ok!','success',3000); loadModels(); }catch(e){ Err.show(e.message); } finally{ b.disabled=false; b.textContent='Testar LLM'; } };
+    $('btn-test').onclick = async () => { const b = $('btn-test'); b.disabled = true; b.textContent = 'Testando...';
+      try { await makeRunner(S.runner, S.llmUrl, S.model).test(); Err.show('LLM ok!', 'success', 3000); loadModels(); } catch (e) { Err.show(e.message); } finally { b.disabled = false; b.textContent = 'Testar LLM'; } };
     $('btn-models').onclick = loadModels;
 
-    $('manual-mode').onchange = (e)=>{ S.manual=e.target.checked; refreshPad(); Log.info('Modo manual: '+(S.manual?'ON':'OFF')); };
-
-    // keyboard control in manual mode
-    const KEYMAP = { ArrowUp:'N', ArrowDown:'S', ArrowLeft:'W', ArrowRight:'E', w:'N', s:'S', a:'W', d:'E', q:'NW', e:'NE', z:'SW', c:'SE', x:'STAY' };
-    window.addEventListener('keydown', (ev)=>{ if(!S.manual) return; const d=KEYMAP[ev.key]; if(d){ ev.preventDefault(); client.action(d,'manual',S.lastPulse); $('io-decision').innerHTML=`<span class="dir">${d}</span> <span class="say">· teclado</span>`; } });
-
-    Log.info('Cliente pronto. Preencha e clique "Entrar na arena".');
+    Log.info('Cliente pronto. Preencha IP + PIN + apelido e clique "Entrar na arena".');
   }
   document.addEventListener('DOMContentLoaded', init);
-  window.DEBUG = { S, parseDecision };
   </script>
 </body>
 </html>
