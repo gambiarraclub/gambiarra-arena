@@ -201,6 +201,16 @@ Ao subir, o script imprime os endereços (incluindo o IP da sua máquina na rede
   (ex.: `OLLAMA_ORIGINS=* ollama serve`).
 - **Não edite arquivos** durante o evento.
 
+**💾 Dados do encontro (pra analisar depois) — persistidos automaticamente:**
+
+- **Banco SQLite** (`server/prisma/dev.db`, modo WAL) é a fonte da verdade: sessões, participantes (apelido / runner / **modelo**), rodadas, métricas (incl. conteúdo gerado), votos e o **log de eventos**.
+- **Eventos de alto nível registrados:** conexões/desconexões + modelo usado; rodadas (texto/SVG) e votos do modo de prompts; e o ciclo de vida do Mundo — `world_started`, `world_joined`, `world_stopped` (com **placar final**). *(De propósito não logamos cada movimento/raciocínio — só o alto nível.)*
+- **Snapshots JSON automáticos** em `server/data/snapshots/` (a cada 10 min e no `Ctrl+C`) — rede de segurança caso ninguém exporte.
+- **Backup do banco** em `server/data/backups/` no início de cada `pnpm event`.
+- **Export manual** quando quiser: `GET /export-all.json`, `/export.csv`, `/export-events.csv`.
+
+> ⚠️ Não rode `prisma migrate reset` e evite o "kick" de participante (apaga dados em cascata). Depois do evento, **guarde** o `server/prisma/dev.db` e a pasta `server/data/`.
+
 ### Rodando uma Sessão Completa
 
 **1. Criar sessão (via API):**

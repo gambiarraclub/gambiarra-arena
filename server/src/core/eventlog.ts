@@ -17,10 +17,14 @@ export type EventType =
   | 'generation_started'
   | 'generation_completed'
   | 'first_token_received'
-  | 'vote_cast';
+  | 'vote_cast'
+  // World mode (high-level lifecycle only — no per-action/reasoning logging)
+  | 'world_started'
+  | 'world_joined'
+  | 'world_stopped';
 
 export type ActorType = 'admin' | 'participant' | 'voter' | 'system';
-export type TargetType = 'session' | 'round' | 'participant' | 'vote' | 'metrics';
+export type TargetType = 'session' | 'round' | 'participant' | 'vote' | 'metrics' | 'world';
 
 export interface LogEventParams {
   sessionId?: string;

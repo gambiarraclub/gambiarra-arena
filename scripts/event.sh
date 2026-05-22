@@ -35,6 +35,12 @@ if [ ! -f server/.env ]; then
   echo "• criando server/.env a partir do exemplo"
   cp server/.env.example server/.env
 fi
+# Backup do banco existente ANTES de qualquer operação (rede de segurança).
+if [ -f server/prisma/dev.db ]; then
+  mkdir -p server/data/backups
+  cp server/prisma/dev.db "server/data/backups/dev-$(date +%Y%m%d-%H%M%S).db"
+  echo "• backup do banco salvo em server/data/backups/"
+fi
 echo "• preparando banco de dados (Prisma)..."
 pnpm --filter @gambiarra/server db:generate
 pnpm --filter @gambiarra/server exec prisma db push --skip-generate

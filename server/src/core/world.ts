@@ -1,4 +1,5 @@
 import type { FastifyBaseLogger } from 'fastify';
+import type { EventLogger } from './eventlog.js';
 import type {
   Direction,
   PerceptionMessage,
@@ -82,6 +83,7 @@ export interface StartParams {
   objective?: string;
   bots?: number;
   foodCount?: number;
+  sessionId?: string; // active session to attach high-level world events to
 }
 
 const DEFAULT_CONFIG: WorldConfig = {
@@ -157,17 +159,20 @@ export class WorldEngine {
   private running = false;
   private loop: NodeJS.Timeout | null = null;
   private foodSeq = 0;
+  private sessionId?: string; // active session for high-level event logging
 
   private readonly SIM_INTERVAL_MS = 50; // 20 Hz sim + broadcast
 
   constructor(
     private hub: WorldHub,
-    private logger: FastifyBaseLogger
+    private logger: FastifyBaseLogger,
+    private eventLogger?: EventLogger
   ) {}
 
   // ---------- lifecycle ----------
 
   start(params: StartParams = {}) {
+    if (params.sessionId) this.sessionId = params.sessionId;
     if (params.objective) this.objective = params.objective;
     if (params.foodCount) this.config.foodCount = params.foodCount;
 
@@ -192,6 +197,13 @@ export class WorldEngine {
       { objective: this.objective, bots: botCount, food: this.food.length, agents: this.agents.size },
       'WORLD_START: agent world started'
     );
+    this.eventLogger?.log({
+      sessionId: this.sessionId,
+      eventType: 'world_started',
+      actorType: 'admin',
+      targetType: 'world',
+      metadata: { objective: this.objective, foodCount: this.config.foodCount, bots: botCount },
+    });
     this.broadcast();
   }
 
@@ -201,9 +213,20 @@ export class WorldEngine {
       clearInterval(this.loop);
       this.loop = null;
     }
+    // Capture the final leaderboard BEFORE clearing — this is the game's result.
+    const scores = Array.from(this.agents.values())
+      .map((a) => ({ id: a.id, nickname: a.nickname, score: a.score, isBot: a.isBot }))
+      .sort((x, y) => y.score - x.score);
+    this.eventLogger?.log({
+      sessionId: this.sessionId,
+      eventType: 'world_stopped',
+      actorType: 'admin',
+      targetType: 'world',
+      metadata: { objective: this.objective, scores },
+    });
     this.agents.clear();
     this.food = [];
-    this.logger.info('WORLD_STOP: agent world stopped');
+    this.logger.info({ scores }, 'WORLD_STOP: agent world stopped');
     this.broadcast();
   }
 
@@ -219,7 +242,8 @@ export class WorldEngine {
 
   // ---------- agent management ----------
 
-  handleJoin(participantId: string, msg: WorldJoinMessage, info: { nickname: string }) {
+  handleJoin(participantId: string, msg: WorldJoinMessage, info: { nickname: string; sessionId?: string }) {
+    if (info.sessionId) this.sessionId = info.sessionId;
     const existing = this.agents.get(participantId);
     if (existing) {
       if (msg.emoji) existing.emoji = msg.emoji;
@@ -234,6 +258,14 @@ export class WorldEngine {
     agent.nextDecisionAt = Date.now();
     this.agents.set(participantId, agent);
     this.logger.info({ participantId, nickname: agent.nickname }, 'WORLD_JOIN: agent entered world');
+    this.eventLogger?.log({
+      sessionId: this.sessionId,
+      eventType: 'world_joined',
+      actorType: 'participant',
+      actorId: participantId,
+      targetType: 'world',
+      metadata: { nickname: agent.nickname, emoji: agent.emoji },
+    });
 
     if (this.food.length === 0) {
       for (let i = 0; i < this.config.foodCount; i++) this.food.push(this.spawnFood());
