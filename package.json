@@ -10,6 +10,7 @@
   ],
   "scripts": {
     "dev": "pnpm --parallel --filter @gambiarra/server --filter @gambiarra/telao dev",
+    "event": "bash scripts/event.sh",
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "simulate": "pnpm --filter @gambiarra/client-typescript simulate",
