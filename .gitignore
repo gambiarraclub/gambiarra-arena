@@ -10,6 +10,8 @@ build/
 # Database
 *.db
 *.db-journal
+*.db-wal
+*.db-shm
 prisma/migrations/
 
 # Environment

@@ -7,14 +7,27 @@ import {
   type ServerMessage,
   type TokenMessage,
   type CompleteMessage,
+  type WorldJoinMessage,
+  type AgentActionMessage,
   ExtendedClientMessageSchema,
   type ExtendedClientMessage,
 } from './schemas.js';
 import type { EventLogger } from '../core/eventlog.js';
 
+/**
+ * Minimal surface of the WorldEngine that the hub routes messages to.
+ * Declared structurally to avoid a circular import with world.ts.
+ */
+export interface WorldEngineLike {
+  handleJoin(participantId: string, msg: WorldJoinMessage, info: { nickname: string }): void;
+  handleAction(participantId: string, msg: AgentActionMessage): void;
+  removeAgent(participantId: string): void;
+}
+
 interface ParticipantConnection {
   participantId: string;
   sessionId: string;
+  nickname: string;
   ws: WebSocket;
   lastSeq: Map<number, number>; // round -> last seq
   lastSeen: Date;
@@ -32,6 +45,7 @@ export class WebSocketHub {
   private tokenBuffer = new Map<string, Map<number, string[]>>(); // participantId -> round -> tokens
   private firstTokenTime = new Map<string, Map<number, Date>>(); // participantId -> round -> first token timestamp
   private generationStartTime = new Map<string, Map<number, Date>>(); // participantId -> round -> start timestamp
+  private worldEngine?: WorldEngineLike;
 
   constructor(
     private prisma: PrismaClient,
@@ -40,6 +54,11 @@ export class WebSocketHub {
   ) {
     this.startHeartbeat();
     this.startPingLoop();
+  }
+
+  /** Wire up the world engine (set after construction to break the import cycle). */
+  setWorldEngine(engine: WorldEngineLike) {
+    this.worldEngine = engine;
   }
 
   async handleConnection(ws: WebSocket, sessionId?: string) {
@@ -93,10 +112,31 @@ export class WebSocketHub {
       case 'telao_register':
         await this.handleTelaoRegister(connId, ws, message as any);
         break;
+      case 'world_join':
+        this.handleWorldJoin(connId, ws, message);
+        break;
+      case 'agent_action':
+        this.handleAgentAction(connId, message);
+        break;
       case 'error':
         this.logger.error({ message }, 'Client error');
         break;
     }
+  }
+
+  private handleWorldJoin(connId: string, ws: WebSocket, message: WorldJoinMessage) {
+    const conn = this.connections.get(connId);
+    if (!conn) {
+      ws.send(JSON.stringify({ type: 'error', message: 'Register before joining the world' }));
+      return;
+    }
+    this.worldEngine?.handleJoin(conn.participantId, message, { nickname: conn.nickname });
+  }
+
+  private handleAgentAction(connId: string, message: AgentActionMessage) {
+    const conn = this.connections.get(connId);
+    if (!conn) return;
+    this.worldEngine?.handleAction(conn.participantId, message);
   }
 
   private async handleTelaoRegister(connId: string, ws: WebSocket, message: any) {
@@ -182,6 +222,7 @@ export class WebSocketHub {
       this.connections.set(connId, {
         participantId: message.participant_id,
         sessionId: session.id,
+        nickname: message.nickname,
         ws,
         lastSeq: new Map(),
         lastSeen: new Date(),
@@ -454,6 +495,9 @@ export class WebSocketHub {
         'WS_DISCONNECTED: Participant disconnected'
       );
 
+      // Remove from the agent world if present
+      this.worldEngine?.removeAgent(conn.participantId);
+
       // Update lastSeen and connected=false in the database so frontends can detect offline participants
       try {
         await this.prisma.participant.update({
@@ -520,6 +564,23 @@ export class WebSocketHub {
         this.logger.error({ error, telaoConn: id }, 'Failed to send message to telao');
       }
     }
+  }
+
+  /** Send a message to a specific participant's live connection. Returns true if delivered. */
+  sendToParticipant(participantId: string, message: unknown): boolean {
+    const payload = JSON.stringify(message);
+    for (const conn of this.connections.values()) {
+      if (conn.participantId === participantId) {
+        try {
+          conn.ws.send(payload);
+          return true;
+        } catch (error) {
+          this.logger.error({ error, participantId }, 'Failed to send to participant');
+          return false;
+        }
+      }
+    }
+    return false;
   }
 
   private startHeartbeat() {
