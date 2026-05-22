@@ -158,6 +158,49 @@ Isso iniciará:
   - Votação: http://localhost:5173/voting
   - Placar: http://localhost:5173/scoreboard
 
+### 🎤 Opção 3: Modo Evento (muitas pessoas / Mundo de Agentes)
+
+Para um evento de verdade com **muitos participantes ao mesmo tempo** (ex.: 25+
+laptops no modo **Mundo de Agentes**), use o **Modo Evento** em vez do `pnpm dev`:
+
+```bash
+pnpm event
+```
+
+Diferenças importantes para o `pnpm dev`:
+
+- **Servidor buildado** (`node dist/index.js`), **sem `tsx watch`** — assim um
+  arquivo salvo por engano **não reinicia o servidor** nem derruba as conexões
+  WebSocket de todo mundo no meio do evento. (Este é o maior ganho de robustez.)
+- **`ulimit -n 4096`** — folga de file descriptors contra picos de reconexão.
+- Builda o servidor, prepara o banco (Prisma) e sobe servidor + telão; `Ctrl+C`
+  encerra os dois.
+
+Ao subir, o script imprime os endereços (incluindo o IP da sua máquina na rede):
+
+```
+• Controle (você):       http://localhost:5173/control   ← cria sessão (PIN + QR), inicia a partida
+• Telão / projetor:      http://localhost:5173/world      ← a arena 2D no projetor
+• Participantes abrem:   http://<seu-ip>:3000/agent       ← cliente do agente (estratégia + LLM local)
+```
+
+> **Por que os participantes usam `:3000/agent` e não `:5173`?** O cliente do
+> agente é servido pelo **servidor** (porta 3000), e conectando ali o WebSocket
+> vai **direto** ao servidor, sem passar pelo proxy do Vite (que não foi feito
+> para dezenas de conexões). O telão (`:5173`) é só para a sua máquina.
+
+**✅ Checklist de infraestrutura para o evento:**
+
+- **Wi-Fi/AP que aguente 25+ dispositivos.** Roteadores domésticos costumam
+  travar em ~20-30 clientes — esse costuma ser o motivo real de "timeouts" e
+  "exceeded connections". Use um AP bom (ou cabo onde der).
+- Peça para a galera abrir **`http://<seu-ip>:3000/agent`** (o `pnpm event`
+  mostra o IP). No cliente, basta digitar o **IP do servidor** (sem `ws://` nem
+  porta) e o **PIN** que aparece no `/control`.
+- Cada participante roda o LLM local com **CORS liberado**
+  (ex.: `OLLAMA_ORIGINS=* ollama serve`).
+- **Não edite arquivos** durante o evento.
+
 ### Rodando uma Sessão Completa
 
 **1. Criar sessão (via API):**
