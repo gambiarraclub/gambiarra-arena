@@ -19,7 +19,7 @@ import type { EventLogger } from '../core/eventlog.js';
  * Declared structurally to avoid a circular import with world.ts.
  */
 export interface WorldEngineLike {
-  handleJoin(participantId: string, msg: WorldJoinMessage, info: { nickname: string }): void;
+  handleJoin(participantId: string, msg: WorldJoinMessage, info: { nickname: string; sessionId?: string }): void;
   handleAction(participantId: string, msg: AgentActionMessage): void;
   removeAgent(participantId: string): void;
 }
@@ -130,7 +130,7 @@ export class WebSocketHub {
       ws.send(JSON.stringify({ type: 'error', message: 'Register before joining the world' }));
       return;
     }
-    this.worldEngine?.handleJoin(conn.participantId, message, { nickname: conn.nickname });
+    this.worldEngine?.handleJoin(conn.participantId, message, { nickname: conn.nickname, sessionId: conn.sessionId });
   }
 
   private handleAgentAction(connId: string, message: AgentActionMessage) {

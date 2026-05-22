@@ -122,7 +122,7 @@ const voteManager = new VoteManager(prisma, app.log, eventLogger);
 const metricsManager = new MetricsManager(prisma);
 
 // Agent world (2D arena mode) — shares the same WS hub
-const worldEngine = new WorldEngine(hub, app.log);
+const worldEngine = new WorldEngine(hub, app.log, eventLogger);
 hub.setWorldEngine(worldEngine);
 
 // SQLite tuning for bursts of concurrent connects/disconnects (e.g. 25+ people
@@ -213,9 +213,43 @@ app.get('/client', { config: { rateLimit: false } }, serveBrowserClient('client.
 // HTTP routes
 await setupRoutes(app, hub, roundManager, voteManager, metricsManager, worldEngine, eventLogger);
 
+// ---- Automatic data snapshots ----
+// Dump the active session's full data (participants, rounds, metrics, votes,
+// events) to a timestamped JSON on disk — a safety net so research data is
+// never lost even if nobody remembers to hit Export. The SQLite DB stays the
+// durable source of truth; these are convenience artifacts ready for analysis.
+const snapshotsDir = path.join(import.meta.dirname ?? '.', '..', 'data', 'snapshots');
+async function dumpSnapshot(reason: string) {
+  try {
+    const session = await prisma.session.findFirst({
+      where: { status: 'active' },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        participants: true,
+        rounds: { include: { metrics: true, votes: true } },
+        events: { orderBy: { timestamp: 'asc' } },
+      },
+    });
+    if (!session) return;
+    fs.mkdirSync(snapshotsDir, { recursive: true });
+    const ts = new Date().toISOString().replace(/[:.]/g, '-');
+    const file = path.join(snapshotsDir, `session-${session.id}-${ts}.json`);
+    fs.writeFileSync(file, JSON.stringify({ reason, exportedAt: new Date().toISOString(), session }, null, 2));
+    app.log.info({ file, reason, events: session.events.length }, 'SNAPSHOT: session data written to disk');
+  } catch (err) {
+    app.log.error({ err }, 'SNAPSHOT_FAILED');
+  }
+}
+// Periodic snapshot every 10 minutes (also survives a non-graceful exit).
+const snapshotInterval = setInterval(() => {
+  void dumpSnapshot('periodic');
+}, 10 * 60 * 1000);
+
 // Graceful shutdown
 const shutdown = async () => {
   app.log.info('Shutting down gracefully...');
+  clearInterval(snapshotInterval);
+  await dumpSnapshot('shutdown');
   worldEngine.cleanup();
   hub.cleanup();
   await prisma.$disconnect();

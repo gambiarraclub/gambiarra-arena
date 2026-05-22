@@ -22,6 +22,9 @@ prisma/migrations/
 # Logs
 logs/
 *.log
+
+# Event data: JSON snapshots & DB backups (runtime artifacts, keep them — don't commit)
+server/data/
 npm-debug.log*
 pnpm-debug.log*
 

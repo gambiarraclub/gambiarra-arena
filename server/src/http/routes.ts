@@ -77,7 +77,12 @@ export async function setupRoutes(
   // Start / configure the agent world (optionally spawn demo bots)
   app.post('/world/start', async (request) => {
     const body = WorldStartSchema.parse(request.body ?? {});
-    worldEngine.start(body);
+    // Attach world events to the active session so they land in the exports.
+    const session = await app.prisma.session.findFirst({
+      where: { status: 'active' },
+      orderBy: { createdAt: 'desc' },
+    });
+    worldEngine.start({ ...body, sessionId: session?.id });
     return { status: 'ok', running: true };
   });
 
