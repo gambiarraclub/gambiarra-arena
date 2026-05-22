@@ -190,9 +190,9 @@ app.register(async (app) => {
 // Exempt from rate limiting: it's a static page 25+ people load near-simultaneously.
 app.get('/agent', { config: { rateLimit: false } }, async (request, reply) => {
   const candidates = [
-    path.join(import.meta.dirname ?? '.', '..', '..', 'client-browser', 'world.html'),
-    path.join(process.cwd(), '..', 'client-browser', 'world.html'),
-    path.join(process.cwd(), 'client-browser', 'world.html'),
+    path.join(import.meta.dirname ?? '.', '..', '..', 'client-browser', 'agent.html'),
+    path.join(process.cwd(), '..', 'client-browser', 'agent.html'),
+    path.join(process.cwd(), 'client-browser', 'agent.html'),
   ];
   for (const p of candidates) {
     if (fs.existsSync(p)) {
@@ -201,7 +201,7 @@ app.get('/agent', { config: { rateLimit: false } }, async (request, reply) => {
     }
   }
   reply.code(404);
-  return 'world.html not found';
+  return 'agent.html not found';
 });
 
 // HTTP routes
