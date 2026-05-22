@@ -74,13 +74,36 @@ export const TelaoRegisterMessageSchema = z.object({
   view: z.string().optional(),
 });
 
-// Extend client message union to accept telao registrations
+// ============ WORLD MODE (agent arena) ============
+export const DIRECTIONS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW', 'STAY'] as const;
+
+// Agent enters the 2D world (sent after `register`)
+export const WorldJoinMessageSchema = z.object({
+  type: z.literal('world_join'),
+  participant_id: z.string(),
+  emoji: z.string().optional(),
+  color: z.string().optional(),
+  strategy_summary: z.string().optional(),
+});
+
+// Agent's movement decision (reply to a `perception`)
+export const AgentActionMessageSchema = z.object({
+  type: z.literal('agent_action'),
+  participant_id: z.string(),
+  direction: z.enum(DIRECTIONS),
+  say: z.string().optional(),
+  pulse: z.number().optional(),
+});
+
+// Extend client message union to accept telao registrations + world messages
 export const ExtendedClientMessageSchema = z.discriminatedUnion('type', [
   RegisterMessageSchema,
   TokenMessageSchema,
   CompleteMessageSchema,
   ErrorMessageSchema,
   TelaoRegisterMessageSchema,
+  WorldJoinMessageSchema,
+  AgentActionMessageSchema,
 ]);
 
 // Vote messages
@@ -105,3 +128,45 @@ export type ClientMessage = z.infer<typeof ClientMessageSchema>;
 export type ExtendedClientMessage = z.infer<typeof ExtendedClientMessageSchema>;
 
 export type VoteMessage = z.infer<typeof VoteMessageSchema>;
+
+// World mode types
+export type Direction = (typeof DIRECTIONS)[number];
+export type WorldJoinMessage = z.infer<typeof WorldJoinMessageSchema>;
+export type AgentActionMessage = z.infer<typeof AgentActionMessageSchema>;
+
+// Server -> agent: a radar pulse
+export interface PerceptionMessage {
+  type: 'perception';
+  pulse: number;
+  objective: string; // the game goal, so the agent's prompt always includes it
+  nearest_food: { direction: Direction; distance: string } | null;
+  walls: string;
+  position: string;
+  score: number;
+  bumped: boolean; // the previous move hit a wall (clamped) — agent may be stuck
+  radar_text: string; // pre-rendered PT sentence to drop into the LLM prompt
+}
+
+// Server -> telao: full world snapshot
+export interface WorldStateMessage {
+  type: 'world_state';
+  t: number;
+  running: boolean;
+  objective: string;
+  config: { width: number; height: number };
+  agents: Array<{
+    id: string;
+    nickname: string;
+    emoji: string;
+    color: string;
+    x: number;
+    y: number;
+    heading: number;
+    score: number;
+    say: string | null;
+    radarAt: number | null;
+    bumpedAt: number | null; // epoch ms of last wall collision (telao shake/impact fx)
+    isBot: boolean;
+  }>;
+  food: Array<{ id: string; x: number; y: number }>;
+}

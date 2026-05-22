@@ -6,6 +6,7 @@ import { RoundManager } from '../core/rounds.js';
 import { VoteManager } from '../core/votes.js';
 import { MetricsManager } from '../core/metrics.js';
 import { EventLogger } from '../core/eventlog.js';
+import type { WorldEngine } from '../core/world.js';
 import type { WebSocketHub } from '../ws/hub.js';
 
 const CreateSessionSchema = z.object({
@@ -51,17 +52,44 @@ const KickParticipantSchema = z.object({
   participantId: z.string(),
 });
 
+const WorldStartSchema = z.object({
+  objective: z.string().optional(),
+  bots: z.number().int().min(0).max(50).optional(),
+  foodCount: z.number().int().min(1).max(100).optional(),
+});
+
 export async function setupRoutes(
   app: FastifyInstance,
   hub: WebSocketHub,
   roundManager: RoundManager,
   voteManager: VoteManager,
   metricsManager: MetricsManager,
+  worldEngine: WorldEngine,
   eventLogger?: EventLogger
 ) {
   // Health check
   app.get('/health', async () => {
     return { status: 'ok', timestamp: Date.now() };
+  });
+
+  // ============ WORLD MODE (2D agent arena) ============
+
+  // Start / configure the agent world (optionally spawn demo bots)
+  app.post('/world/start', async (request) => {
+    const body = WorldStartSchema.parse(request.body ?? {});
+    worldEngine.start(body);
+    return { status: 'ok', running: true };
+  });
+
+  // Stop the agent world and clear it
+  app.post('/world/stop', async () => {
+    worldEngine.stop();
+    return { status: 'ok', running: false };
+  });
+
+  // Current world snapshot (debugging / polling fallback)
+  app.get('/world/state', async () => {
+    return worldEngine.snapshot();
   });
 
   // Get active session

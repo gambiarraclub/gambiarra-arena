@@ -8,6 +8,7 @@ import { RoundManager } from './core/rounds.js';
 import { VoteManager } from './core/votes.js';
 import { MetricsManager } from './core/metrics.js';
 import { EventLogger } from './core/eventlog.js';
+import { WorldEngine } from './core/world.js';
 import { setupRoutes } from './http/routes.js';
 import path from 'path';
 import fs from 'fs';
@@ -120,6 +121,10 @@ const roundManager = new RoundManager(prisma, hub, app.log, eventLogger);
 const voteManager = new VoteManager(prisma, app.log, eventLogger);
 const metricsManager = new MetricsManager(prisma);
 
+// Agent world (2D arena mode) — shares the same WS hub
+const worldEngine = new WorldEngine(hub, app.log);
+hub.setWorldEngine(worldEngine);
+
 // Startup cleanup: Mark all participants as disconnected
 // This handles the case where the server crashed or restarted
 // and the database still has stale connected=true records
@@ -166,12 +171,30 @@ app.register(async (app) => {
   });
 });
 
+// Serve the participant world client (browser agent) at /agent
+app.get('/agent', async (request, reply) => {
+  const candidates = [
+    path.join(import.meta.dirname ?? '.', '..', '..', 'client-browser', 'world.html'),
+    path.join(process.cwd(), '..', 'client-browser', 'world.html'),
+    path.join(process.cwd(), 'client-browser', 'world.html'),
+  ];
+  for (const p of candidates) {
+    if (fs.existsSync(p)) {
+      reply.header('Content-Type', 'text/html; charset=utf-8');
+      return fs.readFileSync(p, 'utf-8');
+    }
+  }
+  reply.code(404);
+  return 'world.html not found';
+});
+
 // HTTP routes
-await setupRoutes(app, hub, roundManager, voteManager, metricsManager, eventLogger);
+await setupRoutes(app, hub, roundManager, voteManager, metricsManager, worldEngine, eventLogger);
 
 // Graceful shutdown
 const shutdown = async () => {
   app.log.info('Shutting down gracefully...');
+  worldEngine.cleanup();
   hub.cleanup();
   await prisma.$disconnect();
   await app.close();
