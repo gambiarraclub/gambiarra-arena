@@ -96,9 +96,8 @@
     .out .t { font-size:.7rem; text-transform:uppercase; letter-spacing:.06em; color: var(--text-muted); margin:.4rem 0; }
     #token-stream { font-family: var(--mono); font-size:.84rem; white-space:pre-wrap; word-break:break-word; max-height:320px; overflow-y:auto; background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:.8rem 1rem; }
     #token-stream:empty::before { content:'Aguardando desafio do administrador...'; color:var(--text-muted); font-style:italic; }
-    .svg-preview { background:#fff; border-radius:8px; padding:1rem; margin-top:.8rem; display:none; }
+    .svg-preview { width:100%; height:380px; border:0; border-radius:8px; background:#fff; margin-top:.8rem; display:none; }
     .svg-preview.on { display:block; }
-    .svg-preview svg { max-width:100%; height:auto; display:block; margin:0 auto; }
 
     details#logp { background: var(--bg-secondary); border-radius: var(--radius); border:1px solid var(--border); }
     details#logp summary { padding:.9rem 1.3rem; cursor:pointer; font-weight:600; color: var(--text-secondary); }
@@ -250,7 +249,7 @@
       <div class="out">
         <div class="t">Resposta gerada (streaming)</div>
         <div id="token-stream"></div>
-        <div class="svg-preview" id="svg-preview"></div>
+        <iframe class="svg-preview" id="svg-preview" sandbox title="Pré-visualização do SVG"></iframe>
       </div>
     </section>
 
@@ -476,7 +475,11 @@
     const j = text.lastIndexOf('</svg>');
     const svg = j > i ? text.slice(i, j + 6) : text.slice(i);
     const el = $('svg-preview');
-    el.innerHTML = svg;
+    // Render inside a sandboxed iframe (no allow-scripts) so any scripts/handlers
+    // embedded in the model-generated SVG can't run against this page.
+    el.srcdoc = '<!doctype html><meta charset="utf-8">'
+      + '<style>html,body{margin:0;height:100%;display:flex;align-items:center;justify-content:center;background:#fff}svg{max-width:100%;max-height:100%;height:auto}</style>'
+      + svg;
     el.classList.add('on');
   }
 
@@ -486,7 +489,7 @@
     $('rn').textContent = 'Rodada ' + ch.round;
     $('prompt').textContent = ch.prompt; $('prompt').classList.remove('empty');
     $('token-stream').textContent = '';
-    $('svg-preview').classList.remove('on'); $('svg-preview').innerHTML = '';
+    $('svg-preview').classList.remove('on'); $('svg-preview').srcdoc = '';
     setStat(0, 0, '—', '0.0');
 
     let seq = 0, firstTokenTime = null, text = '';

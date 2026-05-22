@@ -1,4 +1,4 @@
-import Fastify from 'fastify';
+import Fastify, { type FastifyRequest, type FastifyReply } from 'fastify';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import websocket from '@fastify/websocket';
@@ -191,7 +191,7 @@ app.register(async (app) => {
 //   /agent  -> agent.html  (Mundo de Agentes)
 //   /client -> client.html (modo desafio: texto / SVG)
 function serveBrowserClient(file: string) {
-  return async (_request: unknown, reply: { header: (k: string, v: string) => void; code: (n: number) => void }) => {
+  return async (_request: FastifyRequest, reply: FastifyReply) => {
     const candidates = [
       path.join(import.meta.dirname ?? '.', '..', '..', 'client-browser', file),
       path.join(process.cwd(), '..', 'client-browser', file),
