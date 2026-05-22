@@ -125,6 +125,21 @@ const metricsManager = new MetricsManager(prisma);
 const worldEngine = new WorldEngine(hub, app.log);
 hub.setWorldEngine(worldEngine);
 
+// SQLite tuning for bursts of concurrent connects/disconnects (e.g. 25+ people
+// joining at once). WAL lets readers and the writer work without blocking each
+// other; busy_timeout makes a contended write wait instead of erroring with
+// SQLITE_BUSY ("database is locked").
+try {
+  // Use queryRaw for all: several PRAGMAs return a row (journal_mode, busy_timeout),
+  // which $executeRaw rejects with "Execute returned results".
+  await prisma.$queryRawUnsafe('PRAGMA journal_mode=WAL;');
+  await prisma.$queryRawUnsafe('PRAGMA busy_timeout=5000;');
+  await prisma.$queryRawUnsafe('PRAGMA synchronous=NORMAL;');
+  app.log.info('SQLite: WAL mode + busy_timeout(5s) enabled');
+} catch (err) {
+  app.log.warn({ err }, 'Failed to apply SQLite PRAGMAs (continuing)');
+}
+
 // Startup cleanup: Mark all participants as disconnected
 // This handles the case where the server crashed or restarted
 // and the database still has stale connected=true records
@@ -172,7 +187,8 @@ app.register(async (app) => {
 });
 
 // Serve the participant world client (browser agent) at /agent
-app.get('/agent', async (request, reply) => {
+// Exempt from rate limiting: it's a static page 25+ people load near-simultaneously.
+app.get('/agent', { config: { rateLimit: false } }, async (request, reply) => {
   const candidates = [
     path.join(import.meta.dirname ?? '.', '..', '..', 'client-browser', 'world.html'),
     path.join(process.cwd(), '..', 'client-browser', 'world.html'),

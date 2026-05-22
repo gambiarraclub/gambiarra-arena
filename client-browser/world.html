@@ -259,7 +259,14 @@
     const slug = (nick || '').trim().toLowerCase()
       .normalize('NFD').replace(/[̀-ͯ]/g, '')
       .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 24);
-    return (slug || 'agente') + '_id';
+    // Short per-browser random suffix so two people with the SAME nickname don't
+    // collide on the same id and evict each other (critical with 25+ people).
+    let rnd = '';
+    try {
+      rnd = localStorage.getItem('gambiarra-aid') || '';
+      if (!rnd) { rnd = Math.random().toString(36).slice(2, 6); localStorage.setItem('gambiarra-aid', rnd); }
+    } catch (e) { rnd = Math.random().toString(36).slice(2, 6); }
+    return (slug || 'agente') + '-' + rnd + '_id';
   }
 
   // ============ STATE ============
@@ -423,7 +430,7 @@
       return new Promise((res,rej)=>{
         this.shouldReconnect=true;
         try { this.ws = new WebSocket(url); } catch(e){ rej(new Error('URL inválida')); return; }
-        const to = setTimeout(()=>{ rej(new Error('Timeout ao conectar')); this.ws?.close(); }, 10000);
+        const to = setTimeout(()=>{ rej(new Error('Timeout ao conectar')); this.ws?.close(); }, 15000);
         this.ws.onopen = ()=>{ clearTimeout(to); this.attempts=0; Log.ok('WebSocket conectado'); res(); };
         this.ws.onmessage = (ev)=>{ try{ this.handle(JSON.parse(ev.data)); }catch(e){ Log.err('parse: '+e.message); } };
         this.ws.onclose = (e)=>{ Log.warn('WS fechado: '+e.code); this.onClose?.(); if(this.shouldReconnect) this.reconnect(url); };
@@ -444,7 +451,7 @@
     join(){ this.send({ type:'world_join', participant_id:S.participantId, emoji:S.emoji }); Log.info('Entrou no mundo'); }
     action(dir, say, pulse){ this.send({ type:'agent_action', participant_id:S.participantId, direction:dir, say, pulse }); }
     reconnect(url){
-      if(this.attempts>=6){ Log.err('Máximo de reconexões'); setStatus('error'); return; }
+      if(this.attempts>=15){ Log.err('Máximo de reconexões'); setStatus('error'); return; }
       this.attempts++; const delay=Math.min(1000*2**(this.attempts-1),15000); Log.warn(`Reconectando em ${delay}ms`);
       setTimeout(()=>{ if(this.shouldReconnect) this.connect(url).then(()=>{ this.register(); }).catch(e=>Log.err('reconexão: '+e.message)); }, delay);
     }
