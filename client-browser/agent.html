@@ -247,12 +247,7 @@
             </select>
           </div>
           <div class="fg"><label for="llm-url">URL do LLM</label><input id="llm-url" type="text"></div>
-          <div class="fg"><label for="model">Modelo</label>
-            <div class="model-row">
-              <select id="model"></select>
-              <button type="button" id="btn-models" class="btn-mini" title="Recarregar a lista de modelos do LLM">⟳</button>
-            </div>
-          </div>
+          <div class="fg"><label for="model">Modelo</label><input id="model" type="text" placeholder="ex: llama3.1:8b"></div>
           <div class="fg"><label for="temperature">Temperatura: <span id="temp-val">0.4</span></label>
             <input id="temperature" type="range" min="0" max="1.2" step="0.1" value="0.4"></div>
           <div class="fg" style="display:flex;align-items:flex-start;gap:.5rem;">
@@ -482,26 +477,6 @@
   }
   function makeRunner(type,url,model){ return type==='lmstudio'?new LMStudioRunner(url,model):type==='llamacpp'?new LlamaCppRunner(url,model):new OllamaRunner(url,model); }
 
-  // Carrega a lista de modelos direto da API do LLM local e popula o dropdown.
-  async function loadModels() {
-    const sel = $('model'); if (!sel) return;
-    const prev = S.model || sel.value || '';
-    const base = (S.llmUrl || '').replace(/\/+$/, '');
-    sel.innerHTML = ''; const ld = document.createElement('option'); ld.value = ''; ld.textContent = 'carregando modelos…'; sel.appendChild(ld);
-    let names = [];
-    try {
-      if (S.runner === 'lmstudio') { const r = await fetch(base + '/v1/models'); const d = await r.json(); names = (d.data || []).map(m => m.id); }
-      else if (S.runner === 'llamacpp') { try { const r = await fetch(base + '/v1/models'); const d = await r.json(); names = (d.data || []).map(m => m.id); } catch (e) {} }
-      else { const r = await fetch(base + '/api/tags'); const d = await r.json(); names = (d.models || []).map(m => m.name); }
-    } catch (e) { Log.warn('não foi possível carregar modelos: ' + e.message); }
-    sel.innerHTML = '';
-    if (!names.length) { const o = document.createElement('option'); o.value = ''; o.textContent = '(LLM offline — abra o LLM e clique ⟳)'; sel.appendChild(o); return; }
-    for (const n of names) { const o = document.createElement('option'); o.value = n; o.textContent = n; sel.appendChild(o); }
-    sel.value = (prev && names.includes(prev)) ? prev : names[0];
-    S.model = sel.value; S.save();
-    if (runner) runner.model = S.model; // mantém o runner conectado em sincronia
-    Log.ok(`${names.length} modelo(s) carregado(s) do ${S.runner}`);
-  }
 
   // ============ DECISION PARSING ============
   // Tolerant: small local models ramble and rarely emit clean JSON. We look for
@@ -677,9 +652,8 @@
       el.addEventListener('input', ()=>{ S[key]=el.value; S.save(); });
       el.addEventListener('change', ()=>{ S[key]=el.value; S.save(); });
     }
-    $('runner').addEventListener('change', e=>{ const u=RUNNERS[e.target.value]?.defaultUrl; if(u){ $('llm-url').value=u; S.llmUrl=u; S.save(); } loadModels(); });
-    $('llm-url').addEventListener('change', loadModels);
-    // Trocar o modelo no dropdown vale na hora, sem reconectar.
+    $('runner').addEventListener('change', e=>{ const u=RUNNERS[e.target.value]?.defaultUrl; if(u){ $('llm-url').value=u; S.llmUrl=u; S.save(); } });
+    // Editar o modelo no input vale na hora, sem reconectar.
     $('model').addEventListener('change', () => { if (runner) { runner.model = S.model; Log.info('Modelo trocado para: ' + S.model); } });
     const temp=$('temperature'); temp.value=S.temperature; $('temp-val').textContent=Number(S.temperature).toFixed(1);
     temp.addEventListener('input', ()=>{ S.temperature=parseFloat(temp.value); $('temp-val').textContent=S.temperature.toFixed(1); S.save(); });
@@ -715,7 +689,6 @@
     S.load();
     if(!S.serverUrl) S.serverUrl=defaultServerHost();
     bindInputs(); buildEmojiPicker(); buildPresets(); buildPad();
-    loadModels();
     $('live-emoji').textContent=S.emoji;
 
     client.onRegistered = ()=>{ setStatus('connected'); $('live-name').textContent=S.nickname; Err.show('Na arena! Aguardando radar...','success',3000); client.join(); };
@@ -726,8 +699,7 @@
     $('btn-connect').onclick = connect;
     $('btn-disconnect').onclick = disconnect;
     $('btn-test').onclick = async ()=>{ const b=$('btn-test'); b.disabled=true; b.textContent='Testando...';
-      try{ await makeRunner(S.runner,S.llmUrl,S.model).test(); Err.show('LLM ok!','success',3000); loadModels(); }catch(e){ Err.show(e.message); } finally{ b.disabled=false; b.textContent='Testar LLM'; } };
-    $('btn-models').onclick = loadModels;
+      try{ await makeRunner(S.runner,S.llmUrl,S.model).test(); Err.show('LLM ok!','success',3000); }catch(e){ Err.show(e.message); } finally{ b.disabled=false; b.textContent='Testar LLM'; } };
 
     $('manual-mode').onchange = (e)=>{ S.manual=e.target.checked; refreshPad(); Log.info('Modo manual: '+(S.manual?'ON':'OFF')); };
 
