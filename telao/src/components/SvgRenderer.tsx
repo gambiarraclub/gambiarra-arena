@@ -9,7 +9,7 @@ interface SvgRendererProps {
  * Extracts SVG content from a string using regex.
  * Only returns the content between <svg> and </svg> tags.
  */
-function extractSvg(content: string): string | null {
+export function extractSvg(content: string): string | null {
   // Match SVG tags with all content between them
   // This regex captures from <svg> to </svg>, allowing for attributes and nested content
   const svgRegex = /<svg[\s\S]*?<\/svg>/i;
@@ -29,6 +29,33 @@ function extractSvg(content: string): string | null {
   }
 
   return null;
+}
+
+/**
+ * Make an extracted SVG scale to its container. Browsers size an inline SVG
+ * by its width/height attributes — models emit arbitrary fixed values (e.g.
+ * width="200"), which rendered tiny on voting phones. Move the dimensions
+ * into a viewBox and strip the fixed size so the .svg-fit CSS drives it.
+ */
+export function fitSvg(svg: string): string {
+  const openTagMatch = svg.match(/<svg[^>]*>/i);
+  if (!openTagMatch) return svg;
+
+  let openTag = openTagMatch[0];
+  const hasViewBox = /viewBox\s*=/i.test(openTag);
+  const width = openTag.match(/\swidth\s*=\s*["']?([\d.]+)/i)?.[1];
+  const height = openTag.match(/\sheight\s*=\s*["']?([\d.]+)/i)?.[1];
+
+  if (!hasViewBox && width && height) {
+    openTag = openTag.replace(/<svg/i, `<svg viewBox="0 0 ${width} ${height}"`);
+  }
+
+  // Drop fixed dimensions so CSS can scale the drawing
+  openTag = openTag
+    .replace(/\s(width|height)\s*=\s*"[^"]*"/gi, '')
+    .replace(/\s(width|height)\s*=\s*'[^']*'/gi, '');
+
+  return svg.replace(openTagMatch[0], openTag);
 }
 
 function SvgRenderer({ content, isGenerating }: SvgRendererProps) {
@@ -79,8 +106,8 @@ function SvgRenderer({ content, isGenerating }: SvgRendererProps) {
       </div>
 
       <div
-        className="flex items-center justify-center bg-white rounded p-4 min-h-[200px]"
-        dangerouslySetInnerHTML={{ __html: svgContent }}
+        className="svg-fit flex items-center justify-center bg-white rounded p-4 min-h-[200px]"
+        dangerouslySetInnerHTML={{ __html: fitSvg(svgContent) }}
       />
 
       {/* Debug toggles */}

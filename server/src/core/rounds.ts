@@ -13,6 +13,21 @@ export interface CreateRoundParams {
   svgMode?: boolean;
 }
 
+type RoundRecord = {
+  id: string;
+  sessionId: string;
+  index: number;
+  prompt: string;
+  maxTokens: number;
+  temperature: number;
+  deadlineMs: number;
+  svgMode: boolean;
+  startedAt: Date | null;
+  endedAt: Date | null;
+  votingStatus: string;
+  revealedCount: number;
+};
+
 export class RoundManager {
   constructor(
     private prisma: PrismaClient,
@@ -20,6 +35,32 @@ export class RoundManager {
     private logger: FastifyBaseLogger,
     private eventLogger?: EventLogger
   ) {}
+
+  /**
+   * Push the round's full state to telão/voting clients over WebSocket.
+   * Clients are push-first: this replaces their /session + /rounds/current
+   * polling loops (which caused the 2026-05-23 rate-limit incident).
+   * Only started rounds are broadcast — creating a round in advance must not
+   * flip the voting phones away from the previous round's ceremony screen.
+   */
+  private broadcastRoundState(round: RoundRecord) {
+    this.hub.broadcastToTelao({
+      type: 'round_state',
+      round: {
+        id: round.id,
+        index: round.index,
+        prompt: round.prompt,
+        maxTokens: round.maxTokens,
+        temperature: round.temperature,
+        deadlineMs: round.deadlineMs,
+        svgMode: round.svgMode,
+        startedAt: round.startedAt,
+        endedAt: round.endedAt,
+        votingStatus: round.votingStatus,
+        revealedCount: round.revealedCount,
+      },
+    });
+  }
 
   async createRound(params: CreateRoundParams) {
     const session = await this.prisma.session.findUnique({
@@ -106,6 +147,8 @@ export class RoundManager {
       session_id: round.sessionId,
     });
 
+    this.broadcastRoundState(updatedRound);
+
     this.logger.info({ roundId, index: round.index }, 'Round started');
 
     // Log event for research
@@ -153,6 +196,8 @@ export class RoundManager {
       },
     });
 
+    this.broadcastRoundState(updatedRound);
+
     this.logger.info({ roundId, index: round.index, responses: round.metrics.length }, 'Round stopped, voting opened');
 
     // Log events for research
@@ -194,6 +239,8 @@ export class RoundManager {
       data: { votingStatus: 'closed' },
     });
 
+    this.broadcastRoundState(updatedRound);
+
     this.logger.info({ roundId, index: round.index }, 'Voting closed');
 
     // Log event for research
@@ -233,6 +280,8 @@ export class RoundManager {
       },
     });
 
+    this.broadcastRoundState(updatedRound);
+
     this.logger.info({ roundId, index: round.index }, 'Award ceremony started');
 
     // Log event for research
@@ -271,6 +320,8 @@ export class RoundManager {
       where: { id: roundId },
       data: { revealedCount: round.revealedCount + 1 },
     });
+
+    this.broadcastRoundState(updatedRound);
 
     this.logger.info(
       { roundId, index: round.index, revealed: updatedRound.revealedCount, total: totalParticipants },

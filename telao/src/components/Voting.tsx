@@ -1,4 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useTelaoSocket } from '../hooks/useTelaoSocket';
+import { extractSvg, fitSvg } from './SvgRenderer';
 
 interface Response {
   participant_id: string;
@@ -67,7 +69,84 @@ function Voting() {
   const [voterId] = useState(getVoterId);
   const [svgMode, setSvgMode] = useState(false);
 
-  // Fetch round and responses
+  // Anti-flicker: once we have rendered real state, transient failures
+  // (429, server restart, dropped WS) must never replace it with an error
+  // screen — that alternation was the 2026-05-23 "flickering".
+  const hasDataRef = useRef(false);
+
+  // Fetch responses + my votes for a round whose voting is open (one-shot)
+  const fetchVotingData = useCallback(async (roundToFetch: Round) => {
+    try {
+      const responsesRes = await fetch(`/api/rounds/${roundToFetch.id}/responses`);
+      if (responsesRes.ok) {
+        const data = await responsesRes.json();
+        // Always update svgMode
+        setSvgMode(data.svgMode);
+
+        // Shuffle responses only once when loading OR when round changed
+        setResponses((prevResponses) => {
+          if (prevResponses.length === 0 && data.responses.length > 0) {
+            return shuffleArray(data.responses);
+          }
+          return prevResponses;
+        });
+      }
+
+      // Fetch already voted participants for THIS round
+      const votedRes = await fetch(`/api/votes/mine?roundId=${roundToFetch.id}&voterId=${voterId}`);
+      if (votedRes.ok) {
+        const voted = await votedRes.json();
+        const votedMap = new Map<string, number>();
+        voted.forEach((v: VotedParticipant) => votedMap.set(v.participantId, v.score));
+        setVotedParticipants(votedMap);
+      }
+    } catch (err) {
+      console.warn('[Voting] Failed to fetch voting data (will retry):', err);
+    }
+  }, [voterId]);
+
+  // Apply a round update (from WS push or polling fallback)
+  const applyRound = useCallback((latestRound: Round | null) => {
+    if (!latestRound || (!latestRound.startedAt && !latestRound.endedAt)) {
+      // Ignore rounds that never started (created in advance by the admin)
+      if (!hasDataRef.current) setLoading(false);
+      return;
+    }
+
+    // Check if round changed - if so, reset all state
+    setCurrentRoundId((prevRoundId) => {
+      if (prevRoundId !== null && prevRoundId !== latestRound.id) {
+        console.log('Round changed from', prevRoundId, 'to', latestRound.id);
+        setResponses([]);
+        setCurrentIndex(0);
+        setVotedParticipants(new Map());
+        setSvgMode(false);
+      }
+      return latestRound.id;
+    });
+
+    setRound(latestRound);
+    hasDataRef.current = true;
+    setError(null);
+    setLoading(false);
+
+    if (latestRound.votingStatus === 'open') {
+      fetchVotingData(latestRound);
+    }
+  }, [fetchVotingData]);
+
+  // WebSocket push: server sends state_snapshot on register and round_state
+  // on every lifecycle change — this replaces the aggressive /session polling
+  const wsConnected = useTelaoSocket('voting', useCallback((msg: any) => {
+    if (msg.type === 'state_snapshot') {
+      applyRound((msg.round as Round) ?? null);
+      setLoading(false);
+    } else if (msg.type === 'round_state') {
+      applyRound(msg.round as Round);
+    }
+  }, [applyRound]));
+
+  // Polling fallback (slow): only fills in if WS is down or misses an update
   const fetchData = useCallback(async () => {
     try {
       // Get session to find the latest round
@@ -77,8 +156,11 @@ function Voting() {
         return;
       }
       if (!sessionRes.ok) {
-        setError('Nenhuma sessão ativa');
-        setLoading(false);
+        // Keep showing the last good state; only error out if we never had one
+        if (!hasDataRef.current) {
+          setError('Nenhuma sessão ativa');
+          setLoading(false);
+        }
         return;
       }
 
@@ -96,63 +178,24 @@ function Voting() {
         return;
       }
 
-      // Check if round changed - if so, reset all state
-      setCurrentRoundId((prevRoundId) => {
-        if (prevRoundId !== null && prevRoundId !== latestRound.id) {
-          // Round changed! Reset everything
-          console.log('Round changed from', prevRoundId, 'to', latestRound.id);
-          setResponses([]);
-          setCurrentIndex(0);
-          setVotedParticipants(new Map());
-          setSvgMode(false);
-        }
-        return latestRound.id;
-      });
-
-      setRound(latestRound);
-
-      // If voting is open, fetch responses
-      if (latestRound.votingStatus === 'open') {
-        const responsesRes = await fetch(`/api/rounds/${latestRound.id}/responses`);
-        if (responsesRes.ok) {
-          const data = await responsesRes.json();
-          // Always update svgMode
-          setSvgMode(data.svgMode);
-
-          // Shuffle responses only once when loading OR when round changed
-          // Use functional update to check current state
-          setResponses((prevResponses) => {
-            // If no responses yet, load and shuffle them
-            if (prevResponses.length === 0 && data.responses.length > 0) {
-              return shuffleArray(data.responses);
-            }
-            return prevResponses;
-          });
-        }
-
-        // Fetch already voted participants for THIS round
-        const votedRes = await fetch(`/api/votes/mine?roundId=${latestRound.id}&voterId=${voterId}`);
-        if (votedRes.ok) {
-          const voted = await votedRes.json();
-          const votedMap = new Map<string, number>();
-          voted.forEach((v: VotedParticipant) => votedMap.set(v.participantId, v.score));
-          setVotedParticipants(votedMap);
-        }
-      }
-
-      setLoading(false);
+      applyRound(latestRound);
     } catch (err) {
       console.error('Failed to fetch data:', err);
-      setError('Erro ao carregar dados');
-      setLoading(false);
+      if (!hasDataRef.current) {
+        setError('Erro ao carregar dados');
+        setLoading(false);
+      }
     }
-  }, [voterId]);
+  }, [applyRound]);
+
+  // Retry sooner while voting is open but responses haven't loaded yet
+  const needsVotingData = round?.votingStatus === 'open' && responses.length === 0;
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 5000);
+    const interval = setInterval(fetchData, wsConnected && !needsVotingData ? 30000 : 8000);
     return () => clearInterval(interval);
-  }, [fetchData]);
+  }, [fetchData, wsConnected, needsVotingData]);
 
   const handleVote = async (score: number) => {
     if (!round || responses.length === 0) return;
@@ -309,6 +352,12 @@ function Voting() {
   }
 
   const currentResponse = responses[currentIndex];
+  // Extract the SVG from the raw model output (which usually wraps it in
+  // prose/markdown) and normalize its size — injecting the raw content made
+  // drawings render at the model's fixed width/height, tiny on phones.
+  const currentSvg = svgMode && currentResponse.generated_content
+    ? extractSvg(currentResponse.generated_content)
+    : null;
   const isVoted = votedParticipants.has(currentResponse.participant_id);
   const votedScore = votedParticipants.get(currentResponse.participant_id);
   const votedCount = votedParticipants.size;
@@ -378,10 +427,10 @@ function Voting() {
 
           {/* Response content */}
           <div className="flex-1 p-4 overflow-auto bg-[var(--color-midnight)]">
-            {svgMode && currentResponse.generated_content ? (
+            {currentSvg ? (
               <div
-                className="w-full h-full flex items-center justify-center bg-white rounded-lg p-4 min-h-[200px]"
-                dangerouslySetInnerHTML={{ __html: currentResponse.generated_content }}
+                className="svg-fit w-full h-full flex items-center justify-center bg-white rounded-lg p-3 min-h-[200px]"
+                dangerouslySetInnerHTML={{ __html: fitSvg(currentSvg) }}
               />
             ) : (
               <div className="whitespace-pre-wrap text-gray-300 font-mono text-sm leading-relaxed">
