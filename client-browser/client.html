@@ -7,189 +7,24 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/client-assets/theme.css">
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    :root {
-      --bg-primary: #0A0E27;
-      --bg-secondary: #12162D;
-      --bg-tertiary: #1A1F3D;
-      --bg-input: #0f1430;
-      --text-primary: #e8e8e8;
-      --text-secondary: #b0b0b0;
-      --text-muted: #6b7280;
-      --accent: #FF6B35;
-      --accent-2: #00F5D4;
-      --success: #39FF14;
-      --warning: #FFE66D;
-      --error: #FF006E;
-      --border: #252B4D;
-      --radius: 10px;
-      --mono: 'JetBrains Mono','SF Mono','Fira Code',Consolas,monospace;
-    }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: radial-gradient(1200px 600px at 50% -10%, #1a1f3d 0%, var(--bg-primary) 60%);
-      color: var(--text-primary); line-height: 1.5; min-height: 100vh;
-    }
-    header {
-      background: var(--bg-secondary); padding: .9rem 1.4rem; border-bottom: 2px solid var(--border);
-      display: flex; justify-content: space-between; align-items: center; gap: 1rem;
-    }
-    header h1 { font-family: var(--mono); font-size: 1.25rem; font-weight: 800; letter-spacing: .08em; color: var(--accent); }
-    header h1 small { color: var(--text-muted); font-weight: 500; letter-spacing: 0; }
-    main { max-width: 920px; margin: 0 auto; padding: 1.4rem; display: flex; flex-direction: column; gap: 1.2rem; }
-
-    .status-badge { display:inline-flex; align-items:center; gap:.5rem; padding:.45rem .9rem; border-radius:20px; font-size:.85rem; font-weight:600; background: var(--bg-tertiary); border:1px solid var(--border); }
-    .status-badge::before { content:''; width:9px; height:9px; border-radius:50%; background: currentColor; }
-    .s-disconnected { color: var(--text-muted); }
-    .s-connecting { color: var(--warning); }
-    .s-connected { color: var(--success); }
-    .s-playing { color: var(--accent-2); }
-    .s-playing::before { animation: pulse 1s infinite; }
-    .s-error { color: var(--error); }
-    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
-
-    #errors { position: fixed; top: 76px; right: 1rem; max-width: 380px; z-index: 1000; display:flex; flex-direction:column; gap:.5rem; }
-    .alert { padding: .8rem 1rem; border-radius: var(--radius); display:flex; justify-content:space-between; gap:1rem; animation: slideIn .25s ease; }
-    @keyframes slideIn { from{transform:translateX(100%);opacity:0} to{transform:translateX(0);opacity:1} }
-    .alert-error { background: rgba(255,0,110,.14); border:1px solid var(--error); color:#ffb3d4; }
-    .alert-warning { background: rgba(255,230,109,.12); border:1px solid var(--warning); color:#fff0b3; }
-    .alert-success { background: rgba(57,255,20,.12); border:1px solid var(--success); color:#bdffae; }
-    .alert button { background:none;border:none;color:inherit;cursor:pointer;font-size:1.2rem;line-height:1;opacity:.7; }
-
-    section { background: var(--bg-secondary); border-radius: var(--radius); border:1px solid var(--border); }
-    .pad { padding: 1.3rem; }
-    .grid2 { display:grid; grid-template-columns: 1fr 1fr; gap: 1.2rem; }
-    @media (max-width:680px){ .grid2{ grid-template-columns:1fr; } }
-    fieldset { border:1px solid var(--border); border-radius: var(--radius); padding: 1rem; }
-    legend { padding:0 .5rem; font-weight:700; color: var(--accent-2); font-size:.78rem; text-transform:uppercase; letter-spacing:.08em; }
-    .fg { margin-bottom: .9rem; } .fg:last-child{ margin-bottom:0; }
-    label { display:block; font-size:.82rem; color: var(--text-secondary); margin-bottom:.3rem; }
-    input, select {
-      width:100%; padding:.7rem; background: var(--bg-input); border:1px solid var(--border);
-      border-radius:8px; color: var(--text-primary); font-size:.92rem; transition: border-color .15s;
-    }
-    input:focus, select:focus { outline:none; border-color: var(--accent); }
-    input::placeholder { color: var(--text-muted); }
-
-    #actions { margin-top:1.2rem; display:flex; gap:.8rem; flex-wrap:wrap; }
-    button.btn { padding:.7rem 1.3rem; border-radius:8px; font-size:.95rem; font-weight:700; cursor:pointer; border:none; transition: all .15s; }
-    .btn-primary { background: var(--accent); color:#1a1206; }
-    .btn-primary:hover:not(:disabled){ filter:brightness(1.1); }
-    .btn-primary:disabled { opacity:.5; cursor:not-allowed; }
-    .btn-secondary { background: var(--bg-tertiary); color: var(--text-primary); border:1px solid var(--border); }
-    .btn-secondary:hover { border-color: var(--accent-2); }
-    .btn-danger { background: var(--error); color:#fff; }
-
-    #live { display:none; }
-    #live.on { display:block; }
+    /* específicos do modo desafio (texto/SVG) */
     .round-info { padding:1rem 1.3rem; border-bottom:1px solid var(--border); }
-    .round-info .rn { font-size:.78rem; color:var(--warning); text-transform:uppercase; letter-spacing:.05em; font-weight:700; }
-    .round-info .prompt { margin-top:.4rem; font-size:1.05rem; color:var(--text-primary); white-space:pre-wrap; }
+    .round-info .rn { font-size:.78rem; color:var(--warning); text-transform:uppercase; letter-spacing:.1em; font-weight:700; font-family:var(--mono); }
+    .round-info .prompt { margin-top:.4rem; font-size:1.05rem; color:var(--text-primary); white-space:pre-wrap; font-family:var(--display); }
     .round-info .empty { color:var(--text-muted); font-style:italic; }
     .stat-grid { display:grid; grid-template-columns: repeat(4, 1fr); gap:.8rem; padding:1.1rem 1.3rem; }
     @media (max-width:560px){ .stat-grid{ grid-template-columns: repeat(2,1fr); } }
-    .stat { text-align:center; padding:.8rem; background: var(--bg-tertiary); border-radius:8px; }
-    .stat .v { font-family: var(--mono); font-size:1.4rem; font-weight:800; color: var(--accent-2); }
-    .stat .l { font-size:.7rem; color: var(--text-muted); text-transform:uppercase; margin-top:.2rem; }
     .out { padding: 0 1.3rem 1.3rem; }
-    .out .t { font-size:.7rem; text-transform:uppercase; letter-spacing:.06em; color: var(--text-muted); margin:.4rem 0; }
+    .out .t { font-size:.7rem; text-transform:uppercase; letter-spacing:.1em; color: var(--text-muted); margin:.4rem 0; font-family:var(--mono); }
     #token-stream { font-family: var(--mono); font-size:.84rem; white-space:pre-wrap; word-break:break-word; max-height:320px; overflow-y:auto; background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:.8rem 1rem; }
     #token-stream:empty::before { content:'Aguardando desafio do administrador...'; color:var(--text-muted); font-style:italic; }
-    .svg-preview { width:100%; height:380px; border:0; border-radius:8px; background:#fff; margin-top:.8rem; display:none; }
-    .svg-preview.on { display:block; }
-
-    details#logp { background: var(--bg-secondary); border-radius: var(--radius); border:1px solid var(--border); }
-    details#logp summary { padding:.9rem 1.3rem; cursor:pointer; font-weight:600; color: var(--text-secondary); }
-    #log { padding:1rem 1.3rem; font-family: var(--mono); font-size:.72rem; line-height:1.6; max-height:200px; overflow-y:auto; border-top:1px solid var(--border); color: var(--text-muted); }
-    .lt-info{color:var(--accent-2)} .lt-success{color:var(--success)} .lt-warning{color:var(--warning)} .lt-error{color:var(--error)}
-    .hidden { display:none !important; }
-    code { font-family: var(--mono); color: var(--accent-2); }
-
-    /* ============================================================
-       ARCADE-TERMINAL UPGRADE  (frontend-design skill)
-       Redefine palette/fonts and refine every component. Later rules
-       win over the base ones; all original IDs/classes are preserved.
-       ============================================================ */
-    :root {
-      --bg-primary:#06070f; --bg-secondary:#0b0e20; --bg-tertiary:#11162f; --bg-input:#0a0e24;
-      --text-primary:#eaeefc; --text-secondary:#9aa3d4; --text-muted:#646ca2;
-      --accent:#ff7a3d; --accent-2:#2af0df; --success:#54ff95; --warning:#ffd54a; --error:#ff3b8b; --purple:#a06bff;
-      --border:#222a55; --radius:14px;
-      --mono:'JetBrains Mono','SF Mono','Fira Code',Consolas,monospace;
-      --display:'Chakra Petch','Segoe UI',sans-serif;
-      --glow-accent:0 0 16px rgba(255,122,61,.5);
-      --glow-cyan:0 0 16px rgba(42,240,223,.45);
-    }
-    @keyframes ga-rise { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:none} }
-    @keyframes ga-flicker { 0%,100%{opacity:1} 92%{opacity:1} 93%{opacity:.72} 95%{opacity:1} 97%{opacity:.86} 98%{opacity:1} }
-    @keyframes ga-blink { 0%,49%{opacity:1} 50%,100%{opacity:0} }
-    html { color-scheme:dark; }
-    body {
-      font-family:var(--display); letter-spacing:.012em;
-      background:
-        radial-gradient(820px 460px at 18% -10%, rgba(255,122,61,.13), transparent 60%),
-        radial-gradient(760px 520px at 90% 0%, rgba(42,240,223,.10), transparent 58%),
-        linear-gradient(180deg,#080a16,#06070f 62%);
-      background-attachment:fixed;
-    }
-    body::before {
-      content:''; position:fixed; inset:0; z-index:0; pointer-events:none;
-      background-image:
-        linear-gradient(rgba(120,140,255,.05) 1px,transparent 1px),
-        linear-gradient(90deg,rgba(120,140,255,.05) 1px,transparent 1px);
-      background-size:48px 48px;
-      -webkit-mask-image:radial-gradient(ellipse at 50% -5%,#000 30%,transparent 82%);
-              mask-image:radial-gradient(ellipse at 50% -5%,#000 30%,transparent 82%);
-    }
-    body::after {
-      content:''; position:fixed; inset:0; z-index:9998; pointer-events:none; opacity:.30;
-      background:repeating-linear-gradient(0deg, rgba(0,0,0,.22) 0 1px, transparent 1px 3px);
-    }
-    header, main { position:relative; z-index:1; }
-    header {
-      padding:1.15rem 1.6rem;
-      background:linear-gradient(180deg, rgba(11,14,32,.92), rgba(11,14,32,.25));
-      border-bottom:1px solid var(--border);
-      -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px);
-    }
-    header h1 {
-      font-family:var(--display); font-weight:700; font-size:1.4rem; letter-spacing:.18em; text-transform:uppercase;
-      color:var(--accent); text-shadow:0 0 2px rgba(255,122,61,.7), var(--glow-accent);
-      animation:ga-flicker 7s infinite;
-    }
-    header h1 small { display:block; font-family:var(--mono); font-weight:500; font-size:.6rem; letter-spacing:.32em; color:var(--text-muted); text-shadow:none; margin-top:.3rem; }
-    main { animation:ga-rise .5s ease both; }
-    section { position:relative; overflow:hidden; box-shadow:0 20px 55px -30px rgba(0,0,0,.95); }
-    section::after { content:''; position:absolute; top:0; left:0; right:0; height:2px; background:linear-gradient(90deg, var(--accent), var(--accent-2) 55%, transparent); }
-    legend { font-family:var(--mono); color:var(--accent-2); letter-spacing:.16em; }
-    legend::before { content:'▸ '; color:var(--accent); }
-    label { font-family:var(--mono); font-size:.7rem; letter-spacing:.07em; text-transform:uppercase; color:var(--text-secondary); }
-    input, select { font-family:var(--mono); border-radius:10px; transition:border-color .15s, box-shadow .15s, background .15s; }
-    input:focus, select:focus { border-color:var(--accent-2); box-shadow:0 0 0 3px rgba(42,240,223,.12), var(--glow-cyan); background:#0c1230; }
-    button.btn { font-family:var(--display); font-weight:700; letter-spacing:.05em; text-transform:uppercase; border-radius:11px; transition:all .15s; }
-    .btn-primary { background:linear-gradient(180deg,#ff8d50,#ff662a); color:#180d04; box-shadow:0 8px 22px -10px rgba(255,122,61,.85), inset 0 1px 0 rgba(255,255,255,.28); }
-    .btn-primary:hover:not(:disabled){ filter:brightness(1.05); transform:translateY(-1px); box-shadow:0 10px 28px -10px rgba(255,122,61,1), var(--glow-accent); }
-    .btn-secondary { background:rgba(42,240,223,.06); border:1px solid var(--border); color:var(--accent-2); }
-    .btn-secondary:hover { border-color:var(--accent-2); box-shadow:var(--glow-cyan); }
-    .btn-danger { background:linear-gradient(180deg,#ff5a9d,#e51f76); color:#fff; box-shadow:0 8px 22px -10px rgba(255,59,139,.7); }
-    .status-badge { font-family:var(--mono); font-size:.72rem; letter-spacing:.08em; text-transform:uppercase; border-radius:9px; }
-    .status-badge::before { box-shadow:0 0 8px currentColor; }
-    .stat { background:linear-gradient(180deg, var(--bg-tertiary), var(--bg-input)); border:1px solid var(--border); border-radius:10px; }
-    .stat .v { font-family:var(--mono); color:var(--accent-2); text-shadow:var(--glow-cyan); }
-    .stat .l { font-family:var(--mono); letter-spacing:.1em; }
-    /* model dropdown + refresh */
-    .model-row { display:flex; gap:.5rem; }
-    .model-row select { flex:1; min-width:0; }
-    .btn-mini { flex:0 0 auto; width:44px; border-radius:10px; border:1px solid var(--border); background:rgba(42,240,223,.06); color:var(--accent-2); font-size:1.05rem; cursor:pointer; transition:all .15s; }
-    .btn-mini:hover { border-color:var(--accent-2); box-shadow:var(--glow-cyan); }
-    /* terminal-style readouts */
-    #token-stream, .dbg { box-shadow: inset 0 0 44px -22px rgba(42,240,223,.30); }
     #token-stream:not(:empty)::after { content:'▮'; color:var(--accent-2); animation:ga-blink 1s steps(1) infinite; }
-    /* prompt-client specifics */
-    .round-info .rn { font-family:var(--mono); letter-spacing:.1em; }
-    .round-info .prompt { font-family:var(--display); }
-    .out .t { font-family:var(--mono); letter-spacing:.1em; }
+    .svg-preview { width:100%; height:380px; border-radius:8px; margin-top:.8rem; display:none; overflow:hidden;
+      background:conic-gradient(#f0f0f0 25%,#fbfbfb 0 50%,#f0f0f0 0 75%,#fbfbfb 0) 0 0/16px 16px; }
+    .svg-preview.on { display:block; }
+    .svg-preview svg { display:block; width:100%; height:100%; }
   </style>
 </head>
 <body>
@@ -221,8 +56,9 @@
           <div class="fg"><label for="llm-url">URL do LLM</label><input id="llm-url" type="text"></div>
           <div class="fg"><label for="model">Modelo</label>
             <div class="model-row">
-              <select id="model"></select>
-              <button type="button" id="btn-models" class="btn-mini" title="Recarregar a lista de modelos do LLM">⟳</button>
+              <input id="model" list="model-list" placeholder="ex: llama3.1:8b" autocomplete="off">
+              <datalist id="model-list"></datalist>
+              <button type="button" id="btn-models" class="btn-mini" title="Buscar os modelos instalados no LLM">⟳</button>
             </div>
           </div>
         </fieldset>
@@ -249,53 +85,23 @@
       <div class="out">
         <div class="t">Resposta gerada (streaming)</div>
         <div id="token-stream"></div>
-        <iframe class="svg-preview" id="svg-preview" sandbox title="Pré-visualização do SVG"></iframe>
+        <div class="svg-preview" id="svg-preview" role="img" aria-label="Pré-visualização do SVG"></div>
       </div>
     </section>
 
     <details id="logp"><summary>Log de eventos</summary><div id="log"></div></details>
   </main>
 
-  <script>
-  // ============ CONFIG ============
-  const RUNNERS = {
-    ollama:   { defaultUrl:'http://localhost:11434' },
-    lmstudio: { defaultUrl:'http://localhost:1234' },
-    llamacpp: { defaultUrl:'http://localhost:8080' },
-  };
-  const STORAGE_KEY = 'gambiarra-prompt-client';
+  <script type="module">
+  import { $, Err, Log, makeStatusSetter } from '/client-assets/ui.js';
+  import { defaultServerHost, buildWsUrl, deriveId } from '/client-assets/net.js';
+  import { RUNNERS, makeRunner } from '/client-assets/runners.js';
+  import { refreshModelList, wireModelPicker } from '/client-assets/models.js';
+  import { ArenaClient } from '/client-assets/connection.js';
+  import { extractSvg, fitSvg, autoViewBox, sanitizeSvg } from '/client-assets/svg.js';
 
-  function defaultServerHost() {
-    if (location.protocol.startsWith('http') && location.hostname) return location.hostname;
-    return 'localhost';
-  }
-  // Aceita só o IP/hostname e monta a URL completa do WebSocket. Tolera também
-  // ws://… / http://… ou host:porta, pra ninguém travar.
-  function buildWsUrl(input) {
-    let s = (input || '').trim();
-    if (!s) s = defaultServerHost();
-    if (/^wss?:\/\//i.test(s)) return s;
-    if (/^https?:\/\//i.test(s)) {
-      try { const u = new URL(s); const pr = u.protocol === 'https:' ? 'wss' : 'ws';
-        return `${pr}://${u.hostname}:${u.port || 3000}/ws`; } catch (e) { /* fall through */ }
-    }
-    s = s.replace(/^\/+/, '').replace(/\/.*$/, '');
-    if (!/:\d+$/.test(s)) s += ':3000';
-    return `ws://${s}/ws`;
-  }
-  // ID estável derivado do apelido + sufixo aleatório por navegador (evita que
-  // dois apelidos iguais colidam e se derrubem).
-  function deriveId(nick) {
-    const slug = (nick || '').trim().toLowerCase()
-      .normalize('NFD').replace(/[̀-ͯ]/g, '')
-      .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 24);
-    let rnd = '';
-    try {
-      rnd = localStorage.getItem('gambiarra-aid') || '';
-      if (!rnd) { rnd = Math.random().toString(36).slice(2, 6); localStorage.setItem('gambiarra-aid', rnd); }
-    } catch (e) { rnd = Math.random().toString(36).slice(2, 6); }
-    return (slug || 'jogador') + '-' + rnd + '_id';
-  }
+  const STORAGE_KEY = 'gambiarra-prompt-client';
+  const setStatus = makeStatusSetter('Gerando...');
 
   // ============ STATE ============
   const S = {
@@ -315,152 +121,14 @@
     },
   };
 
-  // ============ UI HELPERS ============
-  const $ = (id) => document.getElementById(id);
-  const Err = {
-    show(msg, type='error', ms=null) {
-      const c=$('errors'); const a=document.createElement('div'); a.className=`alert alert-${type}`;
-      const s=document.createElement('span'); s.textContent=msg; a.appendChild(s);
-      const b=document.createElement('button'); b.innerHTML='&times;'; b.onclick=()=>a.remove(); a.appendChild(b);
-      c.appendChild(a); if (ms || type!=='error') setTimeout(()=>a.remove(), ms||7000);
-    },
-    corsHelp(runner) {
-      const h = { ollama:'Rode: OLLAMA_ORIGINS=* ollama serve', lmstudio:'Habilite "Allow CORS" no LM Studio', llamacpp:'Rode com --cors-allowed-origins "*"' };
-      this.show(`CORS bloqueado. ${h[runner]||'Habilite CORS no seu LLM.'}`, 'warning', 14000);
-    },
-  };
-  const Log = {
-    add(m,t='info'){ const el=$('log'); const d=document.createElement('div'); d.innerHTML=`<span style="color:var(--text-muted)">[${new Date().toLocaleTimeString()}]</span> <span class="lt-${t}">${m}</span>`; el.appendChild(d); el.scrollTop=el.scrollHeight; },
-    info(m){this.add(m,'info')}, ok(m){this.add(m,'success')}, warn(m){this.add(m,'warning')}, err(m){this.add(m,'error')},
-  };
-  function setStatus(state) {
-    const map = { disconnected:['Desconectado','s-disconnected'], connecting:['Conectando...','s-connecting'],
-      connected:['Na arena','s-connected'], playing:['Gerando...','s-playing'], error:['Erro','s-error'] };
-    const [txt,cls] = map[state]||map.disconnected;
-    const b=$('status'); b.className='status-badge '+cls; b.textContent=txt;
-    const conn = state==='connected'||state==='playing';
-    $('btn-connect').classList.toggle('hidden', conn);
-    $('btn-disconnect').classList.toggle('hidden', !conn);
-    $('live').classList.toggle('on', conn);
-  }
-
-  // ============ LLM RUNNERS ============
-  class BaseRunner {
-    constructor(url, model){ this.baseUrl = url.replace(/\/$/,''); this.model = model; }
-    async test(){ throw new Error('not impl'); }
-    async generate(prompt, opts, onToken){ throw new Error('not impl'); }
-  }
-  class OllamaRunner extends BaseRunner {
-    async test(){
-      try { const r = await fetch(`${this.baseUrl}/api/tags`); if(!r.ok) throw new Error('status '+r.status);
-        const d = await r.json(); Log.ok(`Ollama ok. Modelos: ${d.models?.map(m=>m.name).join(', ')||'nenhum'}`); }
-      catch(e){ if(e.message.includes('fetch')||e.name==='TypeError'){ Err.corsHelp('ollama'); throw new Error(`Sem conexão com Ollama em ${this.baseUrl}.`);} throw e; }
-    }
-    async generate(prompt, opts, onToken){
-      // think:false: queremos o CONTEÚDO (texto/SVG) direto, sem gastar tokens
-      // "pensando" (modelos de raciocínio deixariam o response vazio/curto).
-      const r = await fetch(`${this.baseUrl}/api/generate`, { method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ model:this.model, prompt, stream:true, think:false, options:{ num_predict:opts.maxTokens||400, temperature:opts.temperature??0.8, seed:opts.seed } }) });
-      if(!r.ok) throw new Error('Ollama '+r.status+': '+await r.text());
-      const rd=r.body.getReader(); const dec=new TextDecoder(); let buf='';
-      while(true){ const {done,value}=await rd.read(); if(done) break; buf+=dec.decode(value,{stream:true});
-        const lines=buf.split('\n'); buf=lines.pop()||'';
-        for(const ln of lines){ if(!ln.trim()) continue; try{ const j=JSON.parse(ln); if(j.response) onToken(j.response); if(j.done) return; }catch(e){} } }
-    }
-  }
-  class LMStudioRunner extends BaseRunner {
-    async test(){
-      try { const r=await fetch(`${this.baseUrl}/v1/models`); if(!r.ok) throw new Error('status '+r.status);
-        const d=await r.json(); Log.ok(`LM Studio ok. Modelos: ${d.data?.map(m=>m.id).join(', ')||'nenhum'}`); }
-      catch(e){ if(e.message.includes('fetch')||e.name==='TypeError'){ Err.corsHelp('lmstudio'); throw new Error(`Sem conexão com LM Studio em ${this.baseUrl}.`);} throw e; }
-    }
-    async generate(prompt, opts, onToken){
-      const r=await fetch(`${this.baseUrl}/v1/completions`, { method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ model:this.model, prompt, max_tokens:opts.maxTokens||400, temperature:opts.temperature??0.8, seed:opts.seed, stream:true }) });
-      if(!r.ok) throw new Error('LM Studio '+r.status+': '+await r.text());
-      const rd=r.body.getReader(); const dec=new TextDecoder(); let buf='';
-      while(true){ const {done,value}=await rd.read(); if(done) break; buf+=dec.decode(value,{stream:true});
-        const lines=buf.split('\n'); buf=lines.pop()||'';
-        for(const ln of lines){ const t=ln.trim(); if(!t.startsWith('data: ')) continue; const data=t.slice(6); if(data==='[DONE]') return;
-          try{ const j=JSON.parse(data); const tok=j.choices?.[0]?.text; if(tok) onToken(tok); }catch(e){} } }
-    }
-  }
-  class LlamaCppRunner extends BaseRunner {
-    async test(){ try{ const r=await fetch(`${this.baseUrl}/health`); if(!r.ok) throw new Error('status '+r.status); Log.ok('llama.cpp ok'); }
-      catch(e){ if(e.message.includes('fetch')||e.name==='TypeError'){ Err.corsHelp('llamacpp'); throw new Error(`Sem conexão com llama.cpp em ${this.baseUrl}.`);} throw e; } }
-    async generate(prompt, opts, onToken){
-      const r=await fetch(`${this.baseUrl}/completion`, { method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ prompt, n_predict:opts.maxTokens||400, temperature:opts.temperature??0.8, seed:opts.seed??-1, stream:true }) });
-      if(!r.ok) throw new Error('llama.cpp '+r.status+': '+await r.text());
-      const rd=r.body.getReader(); const dec=new TextDecoder(); let buf='';
-      while(true){ const {done,value}=await rd.read(); if(done) break; buf+=dec.decode(value,{stream:true});
-        const lines=buf.split('\n'); buf=lines.pop()||'';
-        for(const ln of lines){ const t=ln.trim(); if(!t.startsWith('data: ')) continue; const data=t.slice(6); if(data==='[DONE]') return;
-          try{ const j=JSON.parse(data); if(j.content) onToken(j.content); if(j.stop) return; }catch(e){} } }
-    }
-  }
-  function makeRunner(type,url,model){ return type==='lmstudio'?new LMStudioRunner(url,model):type==='llamacpp'?new LlamaCppRunner(url,model):new OllamaRunner(url,model); }
-
-  // Carrega a lista de modelos direto da API do LLM local e popula o dropdown.
-  async function loadModels() {
-    const sel = $('model'); if (!sel) return;
-    const prev = S.model || sel.value || '';
-    const base = (S.llmUrl || '').replace(/\/+$/, '');
-    sel.innerHTML = ''; const ld = document.createElement('option'); ld.value = ''; ld.textContent = 'carregando modelos…'; sel.appendChild(ld);
-    let names = [];
-    try {
-      if (S.runner === 'lmstudio') { const r = await fetch(base + '/v1/models'); const d = await r.json(); names = (d.data || []).map(m => m.id); }
-      else if (S.runner === 'llamacpp') { try { const r = await fetch(base + '/v1/models'); const d = await r.json(); names = (d.data || []).map(m => m.id); } catch (e) {} }
-      else { const r = await fetch(base + '/api/tags'); const d = await r.json(); names = (d.models || []).map(m => m.name); }
-    } catch (e) { Log.warn('não foi possível carregar modelos: ' + e.message); }
-    sel.innerHTML = '';
-    if (!names.length) { const o = document.createElement('option'); o.value = ''; o.textContent = '(LLM offline — abra o LLM e clique ⟳)'; sel.appendChild(o); return; }
-    for (const n of names) { const o = document.createElement('option'); o.value = n; o.textContent = n; sel.appendChild(o); }
-    sel.value = (prev && names.includes(prev)) ? prev : names[0];
-    S.model = sel.value; S.save();
-    if (runner) runner.model = S.model; // mantém o runner conectado em sincronia
-    Log.ok(`${names.length} modelo(s) carregado(s) do ${S.runner}`);
-  }
-
-  // ============ WS CLIENT (modo desafio) ============
-  class PromptClient {
-    constructor(){ this.ws=null; this.attempts=0; this.shouldReconnect=true; this.onChallenge=null; this.onRegistered=null; this.onError=null; this.onClose=null; }
-    connect(url){
-      return new Promise((res,rej)=>{
-        this.shouldReconnect=true;
-        try { this.ws=new WebSocket(url); } catch(e){ rej(new Error('URL inválida')); return; }
-        const to=setTimeout(()=>{ rej(new Error('Timeout ao conectar')); this.ws?.close(); }, 15000);
-        this.ws.onopen=()=>{ clearTimeout(to); this.attempts=0; Log.ok('WebSocket conectado'); res(); };
-        this.ws.onmessage=(ev)=>{ try{ this.handle(JSON.parse(ev.data)); }catch(e){ Log.err('parse: '+e.message); } };
-        this.ws.onclose=(e)=>{ Log.warn('WS fechado: '+e.code); this.onClose?.(); if(this.shouldReconnect) this.reconnect(url); };
-        this.ws.onerror=()=>{ clearTimeout(to); rej(new Error('Erro ao conectar ao servidor')); };
-      });
-    }
-    handle(m){
-      switch(m.type){
-        case 'registered': this.onRegistered?.(m); break;
-        case 'challenge': this.onChallenge?.(m); break;
-        case 'error': Log.err('servidor: '+m.message); this.onError?.(m); break;
-        case 'heartbeat': case 'registered_telao': break;
-        default: break;
-      }
-    }
-    send(d){ if(this.ws?.readyState===WebSocket.OPEN) this.ws.send(JSON.stringify(d)); }
-    register(){ this.send({ type:'register', participant_id:S.participantId, nickname:S.nickname, pin:S.pin, runner:S.runner, model:S.model }); }
-    sendToken(round, seq, content){ this.send({ type:'token', round, participant_id:S.participantId, seq, content }); }
-    sendComplete(round, tokens, latencyMs, durationMs){ this.send({ type:'complete', round, participant_id:S.participantId, tokens, latency_ms_first_token:latencyMs??undefined, duration_ms:durationMs, model_info:{ name:S.model, runner:S.runner, device:'browser' } }); }
-    sendError(round, code, message){ this.send({ type:'error', round, participant_id:S.participantId, code, message }); }
-    reconnect(url){
-      if(this.attempts>=15){ Log.err('Máximo de reconexões'); setStatus('error'); return; }
-      this.attempts++; const delay=Math.min(1000*2**(this.attempts-1),15000); Log.warn(`Reconectando em ${delay}ms`);
-      setTimeout(()=>{ if(this.shouldReconnect) this.connect(url).then(()=>this.register()).catch(e=>Log.err('reconexão: '+e.message)); }, delay);
-    }
-    disconnect(){ this.shouldReconnect=false; this.ws?.close(); this.ws=null; }
-  }
-
   // ============ APP ============
-  const client = new PromptClient();
+  const client = new ArenaClient();
+  client.getRegisterPayload = () => ({ participant_id:S.participantId, nickname:S.nickname, pin:S.pin, runner:S.runner, model:S.model });
   let runner = null;
+
+  const sendToken = (round, seq, content) => client.send({ type:'token', round, participant_id:S.participantId, seq, content });
+  const sendComplete = (round, tokens, latencyMs, durationMs) => client.send({ type:'complete', round, participant_id:S.participantId, tokens, latency_ms_first_token:latencyMs??undefined, duration_ms:durationMs, model_info:{ name:S.model, runner:S.runner, device:'browser' } });
+  const sendError = (round, code, message) => client.send({ type:'error', round, participant_id:S.participantId, code, message });
 
   function setStat(tokens, tps, ttft, dur) {
     $('st-tokens').textContent = tokens;
@@ -470,16 +138,17 @@
   }
 
   function maybeRenderSvg(text) {
-    const i = text.indexOf('<svg');
-    if (i < 0) return;
-    const j = text.lastIndexOf('</svg>');
-    const svg = j > i ? text.slice(i, j + 6) : text.slice(i);
+    // extractSvg repara SVGs truncados/malformados; autoViewBox reenquadra
+    // desenhos feitos fora do canvas (coordenadas negativas etc.); fitSvg
+    // deixa o CSS ditar o tamanho.
+    const svg = extractSvg(text);
+    if (!svg) return;
+    const vb = autoViewBox(svg);
     const el = $('svg-preview');
-    // Render inside a sandboxed iframe (no allow-scripts) so any scripts/handlers
-    // embedded in the model-generated SVG can't run against this page.
-    el.srcdoc = '<!doctype html><meta charset="utf-8">'
-      + '<style>html,body{margin:0;height:100%;display:flex;align-items:center;justify-content:center;background:#fff}svg{max-width:100%;max-height:100%;height:auto}</style>'
-      + svg;
+    // Render inline (mesmo mecanismo do telão, comprovado em campo) com o SVG
+    // sanitizado — sanitizeSvg remove scripts/handlers, rebuildTags já
+    // normalizou os atributos. O xadrez do fundo vem do CSS do container.
+    el.innerHTML = fitSvg(sanitizeSvg(svg), vb);
     el.classList.add('on');
   }
 
@@ -489,7 +158,7 @@
     $('rn').textContent = 'Rodada ' + ch.round;
     $('prompt').textContent = ch.prompt; $('prompt').classList.remove('empty');
     $('token-stream').textContent = '';
-    $('svg-preview').classList.remove('on'); $('svg-preview').srcdoc = '';
+    $('svg-preview').classList.remove('on'); $('svg-preview').innerHTML = '';
     setStat(0, 0, '—', '0.0');
 
     let seq = 0, firstTokenTime = null, text = '';
@@ -503,7 +172,7 @@
         if (!S.generating) return;
         const now = Date.now();
         if (firstTokenTime === null) { firstTokenTime = now; Log.info(`1º token em ${now - start}ms`); }
-        client.sendToken(ch.round, seq, tok); seq++;
+        sendToken(ch.round, seq, tok); seq++;
         text += tok;
         const el = $('token-stream'); el.textContent = text; el.scrollTop = el.scrollHeight;
         const dur = (now - start) / 1000;
@@ -512,7 +181,7 @@
       clearTimeout(deadline);
       const durationMs = Date.now() - start;
       const latencyMs = firstTokenTime ? firstTokenTime - start : null;
-      client.sendComplete(ch.round, seq, latencyMs, durationMs);
+      sendComplete(ch.round, seq, latencyMs, durationMs);
       setStat(seq, durationMs > 0 ? (seq / (durationMs / 1000)) : 0, latencyMs ?? '—', (durationMs / 1000).toFixed(1));
       maybeRenderSvg(text);
       Log.ok(`completo: ${seq} tokens em ${(durationMs / 1000).toFixed(1)}s`);
@@ -521,7 +190,7 @@
     } catch (e) {
       clearTimeout(deadline);
       Log.err('geração falhou: ' + e.message);
-      client.sendError(ch.round, 'GENERATION_FAILED', e.message);
+      sendError(ch.round, 'GENERATION_FAILED', e.message);
       Err.show('Erro na geração: ' + e.message, 'error');
       setStatus('connected');
     } finally {
@@ -532,8 +201,8 @@
   async function connect() {
     if (!S.nickname.trim()) { Err.show('Informe o apelido'); return; }
     if (!S.pin) { Err.show('Informe o PIN da sessão'); return; }
-    if (!S.model) { Err.show('Selecione um modelo (clique ⟳ se a lista estiver vazia)'); return; }
-    S.participantId = deriveId(S.nickname);
+    if (!S.model.trim()) { Err.show('Informe o modelo (digite o nome ou clique ⟳ para listar)'); return; }
+    S.participantId = deriveId(S.nickname, 'jogador');
     setStatus('connecting');
     try {
       runner = makeRunner(S.runner, S.llmUrl, S.model);
@@ -555,9 +224,8 @@
       el.addEventListener('input', () => { S[key] = el.value; S.save(); });
       el.addEventListener('change', () => { S[key] = el.value; S.save(); });
     }
-    $('runner').addEventListener('change', e => { const u = RUNNERS[e.target.value]?.defaultUrl; if (u) { $('llm-url').value = u; S.llmUrl = u; S.save(); } loadModels(); });
-    $('llm-url').addEventListener('change', loadModels);
-    // Trocar o modelo no dropdown vale na hora, sem reconectar.
+    wireModelPicker(S, RUNNERS);
+    // Trocar o modelo vale na hora, sem reconectar.
     $('model').addEventListener('change', () => { if (runner) { runner.model = S.model; Log.info('Modelo trocado para: ' + S.model); } });
   }
 
@@ -565,22 +233,22 @@
     S.load();
     if (!S.serverUrl) S.serverUrl = defaultServerHost();
     bindInputs();
-    loadModels();
+    refreshModelList(S);
 
-    client.onRegistered = () => { setStatus('connected'); Err.show('Na arena! Aguardando o desafio…', 'success', 3000); };
-    client.onError = (m) => { if (m.message?.includes('PIN')) { Err.show('PIN inválido.', 'error'); disconnect(); } else Err.show(m.message || 'Erro', 'error'); };
+    client.on('registered', () => { setStatus('connected'); Err.show('Na arena! Aguardando o desafio…', 'success', 3000); });
+    client.on('challenge', handleChallenge);
+    client.on('error', (m) => { if (m.message?.includes('PIN')) { Err.show('PIN inválido.', 'error'); disconnect(); } else Err.show(m.message || 'Erro', 'error'); });
     client.onClose = () => { if ($('status').textContent !== 'Desconectado') setStatus('connecting'); };
-    client.onChallenge = handleChallenge;
+    client.onGiveUp = () => setStatus('error');
 
     $('btn-connect').onclick = connect;
     $('btn-disconnect').onclick = disconnect;
     $('btn-test').onclick = async () => { const b = $('btn-test'); b.disabled = true; b.textContent = 'Testando...';
-      try { await makeRunner(S.runner, S.llmUrl, S.model).test(); Err.show('LLM ok!', 'success', 3000); loadModels(); } catch (e) { Err.show(e.message); } finally { b.disabled = false; b.textContent = 'Testar LLM'; } };
-    $('btn-models').onclick = loadModels;
+      try { await makeRunner(S.runner, S.llmUrl, S.model).test(); Err.show('LLM ok!', 'success', 3000); refreshModelList(S, { interactive: true }); } catch (e) { Err.show(e.message); } finally { b.disabled = false; b.textContent = 'Testar LLM'; } };
 
     Log.info('Cliente pronto. Preencha IP + PIN + apelido e clique "Entrar na arena".');
   }
-  document.addEventListener('DOMContentLoaded', init);
+  init();
   </script>
 </body>
 </html>
