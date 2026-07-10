@@ -21,7 +21,8 @@ export type EventType =
   // World mode (high-level lifecycle only — no per-action/reasoning logging)
   | 'world_started'
   | 'world_joined'
-  | 'world_stopped';
+  | 'world_stopped'
+  | 'world_snapshot';
 
 export type ActorType = 'admin' | 'participant' | 'voter' | 'system';
 export type TargetType = 'session' | 'round' | 'participant' | 'vote' | 'metrics' | 'world';

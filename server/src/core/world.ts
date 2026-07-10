@@ -98,6 +98,11 @@ const DEFAULT_CONFIG: WorldConfig = {
 
 // How long a bot "thinks" (radar shown, still stationary) before hopping.
 const BOT_THINK_MS = 450;
+
+// Cadência do registro do estado completo do mundo no event log (ver
+// maybeLogSnapshot): 5s equilibra reconstrução suave e volume no SQLite
+// (~40 agentes ≈ 5KB/snapshot ≈ 3,6MB/hora).
+const WORLD_SNAPSHOT_INTERVAL_MS = 5000;
 // Ceiling for a real agent to reply before we re-send perception.
 const THINK_CEILING_MS = 12000;
 
@@ -159,6 +164,7 @@ export class WorldEngine {
   private running = false;
   private loop: NodeJS.Timeout | null = null;
   private foodSeq = 0;
+  private lastSnapshotAt = 0; // último world_snapshot gravado no event log
   private sessionId?: string; // active session for high-level event logging
 
   private readonly SIM_INTERVAL_MS = 50; // 20 Hz sim + broadcast
@@ -323,6 +329,35 @@ export class WorldEngine {
     }
 
     this.broadcast();
+    this.maybeLogSnapshot(now);
+  }
+
+  /**
+   * Registro periódico do estado COMPLETO do mundo (agentes com posição,
+   * direção, placar e fala + comidas) no event log. Do encontro de 23/05 só
+   * sobraram os joins/leaves — posições e comidas se perderam e o momento de
+   * pico teve que ser reconstruído por aproximação. Com isto, qualquer frame
+   * do mundo passa a ser reconstruível pixel a pixel.
+   */
+  private maybeLogSnapshot(now: number) {
+    if (this.agents.size === 0) return;
+    if (now - this.lastSnapshotAt < WORLD_SNAPSHOT_INTERVAL_MS) return;
+    this.lastSnapshotAt = now;
+    const state = this.buildState();
+    this.eventLogger?.log({
+      sessionId: this.sessionId,
+      eventType: 'world_snapshot',
+      actorType: 'system',
+      targetType: 'world',
+      metadata: {
+        t: state.t,
+        running: state.running,
+        objective: state.objective,
+        config: state.config,
+        agents: state.agents,
+        food: state.food,
+      },
+    });
   }
 
   /** Bot brain: idle (stationary) → pulse + think → hop → idle. Previews the LLM rhythm. */
