@@ -92,6 +92,12 @@ app.log.info({ rateLimitMax, rateLimitWindow, logFilePath }, 'Server config load
 await app.register(rateLimit, {
   max: rateLimitMax,
   timeWindow: rateLimitWindow,
+  // The telão talks to the server through the Vite dev proxy, so ALL of its
+  // REST polling (/admin, /control, arena, etc.) arrives as 127.0.0.1 — a single
+  // rate-limit bucket that fills fast with multiple tabs. Localhost is the
+  // trusted operator machine + the proxy, so exempt it. LAN participants have
+  // other IPs and stay limited (and they use WebSocket anyway, which is exempt).
+  allowList: ['127.0.0.1', '::1'],
   onExceeding: (req, key) => {
     app.log.info(
       { ip: key, method: req.method, url: req.url, rateLimitMax },
