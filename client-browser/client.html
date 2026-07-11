@@ -94,7 +94,7 @@
 
   <script type="module">
   import { $, Err, Log, makeStatusSetter } from '/client-assets/ui.js';
-  import { defaultServerHost, buildWsUrl, deriveId } from '/client-assets/net.js';
+  import { defaultServerHost, prettyServerHost, buildWsUrl, deriveId } from '/client-assets/net.js';
   import { RUNNERS, makeRunner } from '/client-assets/runners.js';
   import { refreshModelList, wireModelPicker } from '/client-assets/models.js';
   import { ArenaClient } from '/client-assets/connection.js';
@@ -118,6 +118,7 @@
     load() {
       try { Object.assign(this, JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}')); } catch(e){}
       if (!this.serverUrl) this.serverUrl = defaultServerHost();
+      this.serverUrl = prettyServerHost(this.serverUrl) || defaultServerHost();
     },
   };
 

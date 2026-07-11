@@ -20,6 +20,21 @@ export function normalizeHttpUrl(input) {
   return s;
 }
 
+/**
+ * Normaliza o que aparece no campo "IP do servidor": se o valor salvo for uma
+ * URL completa (ws://host:3000/ws, http://host etc.), reduz para só o
+ * host — ou host:porta quando a porta não é a padrão 3000. A conexão sempre
+ * funcionou com URL completa (buildWsUrl tolera); isto é só para a interface
+ * mostrar o IP limpo, como o rótulo promete.
+ */
+export function prettyServerHost(input) {
+  const s = (input || '').trim();
+  if (!s) return s;
+  const m = s.match(/^(?:wss?|https?):\/\/([^\/:\s]+)(?::(\d+))?/i);
+  if (m) return m[2] && m[2] !== '3000' ? `${m[1]}:${m[2]}` : m[1];
+  return s.replace(/\/.*$/, '');
+}
+
 // Aceita só o IP/hostname e monta a URL completa do WebSocket. Tolera também
 // ws://… / http://… ou host:porta, pra ninguém travar.
 export function buildWsUrl(input) {

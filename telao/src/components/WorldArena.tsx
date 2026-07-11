@@ -400,7 +400,7 @@ function WorldArena() {
 
       {/* Leaderboard (right) */}
       {board.length > 0 && (
-        <div className="absolute top-5 right-5 w-64 arcade-card rounded-xl p-4 pointer-events-none">
+        <div className="!absolute top-5 right-5 w-64 arcade-card rounded-xl p-4 pointer-events-none">
           <h2 className="text-sm font-mono font-bold text-[var(--color-neon-yellow)] uppercase tracking-wider mb-3">
             Placar
           </h2>
