@@ -159,6 +159,11 @@ Server config via environment variables (see `server/.env.example`):
 
 ## Adding New Features
 
+**New Challenge/Game Mode (START HERE):**
+See `docs/desafios/README.md` — step-by-step recipes with search anchors and
+checkpoints for adding a new render mode (like SVG) or a new interaction mode
+(like World). Written to be followed by a code agent.
+
 **New Runner (TypeScript):**
 1. Create `client-typescript/src/runners/newrunner.ts` implementing `Runner` interface
 2. Add case in `client-typescript/src/cli.ts` switch statement
