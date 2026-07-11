@@ -22,7 +22,8 @@ export type EventType =
   | 'world_started'
   | 'world_joined'
   | 'world_stopped'
-  | 'world_snapshot';
+  | 'world_snapshot'
+  | 'agent_prompt_changed';
 
 export type ActorType = 'admin' | 'participant' | 'voter' | 'system';
 export type TargetType = 'session' | 'round' | 'participant' | 'vote' | 'metrics' | 'world';
