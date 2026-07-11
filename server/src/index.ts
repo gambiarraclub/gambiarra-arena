@@ -206,6 +206,9 @@ function serveBrowserClient(file: string) {
     for (const p of candidates) {
       if (fs.existsSync(p)) {
         reply.header('Content-Type', 'text/html; charset=utf-8');
+        // Participants iterate with us during the event — never let a browser
+        // cache an old page/module (blank-SVG bug was a stale cached client).
+        reply.header('Cache-Control', 'no-store');
         return fs.readFileSync(p, 'utf-8');
       }
     }
@@ -215,6 +218,34 @@ function serveBrowserClient(file: string) {
 }
 app.get('/agent', { config: { rateLimit: false } }, serveBrowserClient('agent.html'));
 app.get('/client', { config: { rateLimit: false } }, serveBrowserClient('client.html'));
+
+// Shared modules/styles used by both browser clients (client-browser/shared/).
+const ASSET_TYPES: Record<string, string> = {
+  '.js': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+};
+app.get('/client-assets/:file', { config: { rateLimit: false } }, async (request: FastifyRequest, reply: FastifyReply) => {
+  const { file } = request.params as { file: string };
+  const ext = path.extname(file);
+  if (!/^[\w.-]+$/.test(file) || !ASSET_TYPES[ext]) {
+    reply.code(404);
+    return 'not found';
+  }
+  const candidates = [
+    path.join(import.meta.dirname ?? '.', '..', '..', 'client-browser', 'shared', file),
+    path.join(process.cwd(), '..', 'client-browser', 'shared', file),
+    path.join(process.cwd(), 'client-browser', 'shared', file),
+  ];
+  for (const p of candidates) {
+    if (fs.existsSync(p)) {
+      reply.header('Content-Type', ASSET_TYPES[ext]);
+      reply.header('Cache-Control', 'no-store');
+      return fs.readFileSync(p, 'utf-8');
+    }
+  }
+  reply.code(404);
+  return `${file} not found`;
+});
 
 // HTTP routes
 await setupRoutes(app, hub, roundManager, voteManager, metricsManager, worldEngine, eventLogger);

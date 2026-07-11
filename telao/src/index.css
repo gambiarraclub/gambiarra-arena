@@ -550,3 +550,12 @@ code, pre {
   90% { clip: rect(73px, 9999px, 37px, 0); }
   100% { clip: rect(5px, 9999px, 95px, 0); }
 }
+
+/* Participant SVGs (telão cards + voting phones): fitSvg() strips the model's
+   fixed width/height, so this rule scales the drawing to its container. */
+.svg-fit svg {
+  width: 100%;
+  height: auto;
+  max-height: 60vh;
+  display: block;
+}

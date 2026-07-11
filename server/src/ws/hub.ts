@@ -153,6 +153,64 @@ export class WebSocketHub {
     } catch (error) {
       this.logger.error({ error }, 'Failed to ack telao register');
     }
+
+    // Push a full state snapshot so the client hydrates immediately without
+    // HTTP polling — telão/voting clients are push-first, polling is fallback.
+    try {
+      const snapshot = await this.buildStateSnapshot();
+      if (snapshot) {
+        ws.send(JSON.stringify(snapshot));
+      }
+    } catch (error) {
+      this.logger.error({ error, connId }, 'Failed to send state snapshot to telao');
+    }
+  }
+
+  /**
+   * Build the state_snapshot message sent to telão/voting clients on register.
+   * Mirrors what the /session, /rounds/current and /presence endpoints return,
+   * so clients that consume the snapshot no longer need to poll them.
+   */
+  private async buildStateSnapshot(): Promise<object | null> {
+    const session = await this.prisma.session.findFirst({
+      where: { status: 'active' },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!session) return null;
+
+    // Latest round that has been started (or ended) — the one clients display.
+    const round = await this.prisma.round.findFirst({
+      where: {
+        sessionId: session.id,
+        OR: [{ startedAt: { not: null } }, { endedAt: { not: null } }],
+      },
+      orderBy: { index: 'desc' },
+    });
+
+    // Connected participants (in-memory state is the authoritative source)
+    const liveIds = this.getLiveConnectedParticipants()
+      .filter((c) => c.sessionId === session.id)
+      .map((c) => c.participantId);
+    const participants = await this.prisma.participant.findMany({
+      where: { id: { in: liveIds }, sessionId: session.id },
+      select: { id: true, nickname: true, runner: true, model: true, lastSeen: true },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    // Live tokens so a telão (re)connected mid-round shows generation in progress
+    const liveTokens =
+      round && round.startedAt && !round.endedAt
+        ? Object.fromEntries(await this.getCurrentRoundTokens(round.index))
+        : undefined;
+
+    return {
+      type: 'state_snapshot',
+      session: { id: session.id, createdAt: session.createdAt, status: session.status },
+      round,
+      liveTokens,
+      participants: participants.map((p) => ({ ...p, connected: true })),
+    };
   }
 
   private async handleRegister(

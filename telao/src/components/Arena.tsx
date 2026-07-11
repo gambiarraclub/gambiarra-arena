@@ -43,9 +43,10 @@ const EMPTY_STATE: ParticipantState = {
   tokensBySeq: {},
 };
 
-// Polling intervals (ms)
-const POLL_FAST = 3000;   // When WS is disconnected (fallback)
-const POLL_SLOW = 10000;  // When WS is connected (just consistency check)
+// Polling intervals (ms). State arrives via WebSocket push (state_snapshot +
+// round_state + participant events); polling is only a consistency fallback.
+const POLL_FAST = 5000;   // When WS is disconnected (fallback)
+const POLL_SLOW = 60000;  // When WS is connected (rare consistency check)
 
 function Arena() {
   const [participants, setParticipants] = useState<Participant[]>([]);
@@ -350,6 +351,46 @@ function Arena() {
                 }
                 return cleared;
               });
+              break;
+            }
+            case 'round_state': {
+              // Full round state pushed on every lifecycle change
+              setCurrentRound(msg.round as Round);
+              break;
+            }
+            case 'state_snapshot': {
+              // Sent right after telao_register: hydrate without HTTP fetches
+              if (Array.isArray(msg.participants)) {
+                setParticipants(msg.participants as Participant[]);
+              }
+              setCurrentRound((msg.round as Round) ?? null);
+              const liveTokens = msg.liveTokens as Record<string, string[]> | undefined;
+              if (msg.round && liveTokens) {
+                const ended = Boolean((msg.round as Round).endedAt);
+                setParticipantStates((prev) => {
+                  const next = { ...prev };
+                  for (const [pid, tokens] of Object.entries(liveTokens)) {
+                    const existing = next[pid];
+                    // Only hydrate participants we know nothing (or less) about —
+                    // the live token stream stays authoritative
+                    if (!existing || tokens.length > existing.content.length) {
+                      const tokensBySeq: Record<number, string> = {};
+                      tokens.forEach((t, i) => { tokensBySeq[i] = t; });
+                      next[pid] = {
+                        tokens: tokens.length,
+                        isGenerating: !ended,
+                        content: tokens,
+                        joinedContent: tokens.join(''),
+                        tokensBySeq,
+                        ttftMs: existing?.ttftMs,
+                        tps: existing?.tps,
+                        durationMs: existing?.durationMs,
+                      };
+                    }
+                  }
+                  return next;
+                });
+              }
               break;
             }
             default:
