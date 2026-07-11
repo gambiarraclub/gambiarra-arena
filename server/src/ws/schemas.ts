@@ -87,6 +87,15 @@ export const WorldJoinMessageSchema = z.object({
 });
 
 // Agent's movement decision (reply to a `perception`)
+// Participante salvou um template de prompt customizado no /agent — vai para
+// o event log (pesquisa: cruzar prompt x desempenho nos world_snapshots).
+export const AgentPromptMessageSchema = z.object({
+  type: z.literal('agent_prompt'),
+  participant_id: z.string(),
+  template: z.string().min(1).max(4000),
+  is_default: z.boolean().optional(),
+});
+
 export const AgentActionMessageSchema = z.object({
   type: z.literal('agent_action'),
   participant_id: z.string(),
@@ -104,6 +113,7 @@ export const ExtendedClientMessageSchema = z.discriminatedUnion('type', [
   TelaoRegisterMessageSchema,
   WorldJoinMessageSchema,
   AgentActionMessageSchema,
+  AgentPromptMessageSchema,
 ]);
 
 // Vote messages
@@ -133,6 +143,7 @@ export type VoteMessage = z.infer<typeof VoteMessageSchema>;
 export type Direction = (typeof DIRECTIONS)[number];
 export type WorldJoinMessage = z.infer<typeof WorldJoinMessageSchema>;
 export type AgentActionMessage = z.infer<typeof AgentActionMessageSchema>;
+export type AgentPromptMessage = z.infer<typeof AgentPromptMessageSchema>;
 
 // Server -> agent: a radar pulse
 export interface PerceptionMessage {

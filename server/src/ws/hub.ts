@@ -9,6 +9,7 @@ import {
   type CompleteMessage,
   type WorldJoinMessage,
   type AgentActionMessage,
+  type AgentPromptMessage,
   ExtendedClientMessageSchema,
   type ExtendedClientMessage,
 } from './schemas.js';
@@ -118,6 +119,9 @@ export class WebSocketHub {
       case 'agent_action':
         this.handleAgentAction(connId, message);
         break;
+      case 'agent_prompt':
+        this.handleAgentPrompt(connId, message);
+        break;
       case 'error':
         this.logger.error({ message }, 'Client error');
         break;
@@ -137,6 +141,30 @@ export class WebSocketHub {
     const conn = this.connections.get(connId);
     if (!conn) return;
     this.worldEngine?.handleAction(conn.participantId, message);
+  }
+
+  // Template de prompt customizado do /agent: só registra no event log — o
+  // prompt vive e é expandido no cliente; aqui é o rastro para pesquisa.
+  private handleAgentPrompt(connId: string, message: AgentPromptMessage) {
+    const conn = this.connections.get(connId);
+    if (!conn) return;
+    this.logger.info(
+      { participantId: conn.participantId, isDefault: message.is_default ?? false, length: message.template.length },
+      'AGENT_PROMPT: participant saved a prompt template'
+    );
+    this.eventLogger?.log({
+      sessionId: conn.sessionId,
+      eventType: 'agent_prompt_changed',
+      actorType: 'participant',
+      actorId: conn.participantId,
+      targetType: 'participant',
+      targetId: conn.participantId,
+      metadata: {
+        nickname: conn.nickname,
+        isDefault: message.is_default ?? false,
+        template: message.template,
+      },
+    });
   }
 
   private async handleTelaoRegister(connId: string, ws: WebSocket, message: any) {

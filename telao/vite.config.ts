@@ -28,6 +28,11 @@ export default defineConfig({
         target: 'http://localhost:3000',
         changeOrigin: true,
       },
+      // Shared modules/styles the participant pages import (client-browser/shared/)
+      '/client-assets': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
     },
   },
 });

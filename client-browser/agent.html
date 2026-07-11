@@ -37,6 +37,21 @@
     #io-think-box .t { color:var(--purple); }
     #io-think { color:#cbb8ff; }
 
+    /* protocolo do agente (banner) + editor de template */
+    .protocol-banner { margin-top:1.2rem; padding:1rem 1.2rem; border-radius:var(--radius);
+      background:rgba(42,240,223,.06); border:1px solid var(--accent-2); }
+    .protocol-banner h3 { font-family:var(--mono); font-size:.8rem; text-transform:uppercase;
+      letter-spacing:.12em; color:var(--accent-2); margin-bottom:.5rem; }
+    .protocol-banner p { font-size:.88rem; color:var(--text-secondary); margin-bottom:.35rem; }
+    .protocol-banner code { background:var(--bg-input); border-radius:5px; padding:.1rem .4rem; }
+    #prompt-template { font-family:var(--mono); font-size:.82rem; min-height:180px; }
+    #template-hints { font-size:.78rem; margin-top:.4rem; font-family:var(--mono); }
+    .tpl-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:.3rem; }
+    .tpl-head label { margin:0; }
+    .btn-tiny { font-size:.72rem; font-family:var(--mono); padding:.25rem .6rem; border-radius:8px;
+      border:1px solid var(--border); background:var(--bg-tertiary); color:var(--text-secondary); cursor:pointer; }
+    .btn-tiny:hover { border-color:var(--accent-2); color:var(--accent-2); }
+
     .manual { padding: 0 1.3rem 1.3rem; }
     .manual-toggle { display:flex; align-items:center; gap:.6rem; margin-bottom:.8rem; font-size:.9rem; color: var(--text-secondary); }
     .pad-grid { display:grid; grid-template-columns: repeat(3, 60px); grid-template-rows: repeat(3,60px); gap:.4rem; justify-content:center; }
@@ -88,6 +103,14 @@
         </fieldset>
       </div>
 
+      <div class="protocol-banner">
+        <h3>📡 Protocolo do agente — como fazer seu agente andar</h3>
+        <p>A cada pulso, seu agente <b>recebe o radar</b> (o que ele vê) e precisa <b>responder em uma linha</b>:</p>
+        <p><code>MOVE: &lt;N|NE|E|SE|S|SW|W|NW|STAY&gt; | comentário curto</code></p>
+        <p>No template abaixo, os placeholders <code>{{radar}}</code> e <code>{{protocolo}}</code> garantem isso.
+           Se você removê-los, eles são anexados ao final automaticamente — seu agente nunca fica cego nem mudo.</p>
+      </div>
+
       <fieldset style="margin-top:1.2rem;">
         <legend>🧠 Seu agente</legend>
         <div class="fg">
@@ -98,6 +121,14 @@
           <label for="strategy">Estratégia (como seu agente pensa)</label>
           <textarea id="strategy" placeholder="Descreva como seu agente deve se comportar..."></textarea>
           <div class="presets" id="presets"></div>
+        </div>
+        <div class="fg">
+          <div class="tpl-head">
+            <label for="prompt-template">Prompt do agente (template — mudou, vale no próximo pulso)</label>
+            <button type="button" id="btn-template-reset" class="btn-tiny">↺ Restaurar padrão</button>
+          </div>
+          <textarea id="prompt-template" spellcheck="false"></textarea>
+          <div id="template-hints"></div>
         </div>
       </fieldset>
 
@@ -137,12 +168,34 @@
 
   <script type="module">
   import { $, Err, Log, makeStatusSetter } from '/client-assets/ui.js';
-  import { defaultServerHost, buildWsUrl, deriveId } from '/client-assets/net.js';
+  import { defaultServerHost, prettyServerHost, buildWsUrl, deriveId } from '/client-assets/net.js';
   import { RUNNERS, makeRunner } from '/client-assets/runners.js';
   import { refreshModelList, wireModelPicker } from '/client-assets/models.js';
   import { ArenaClient } from '/client-assets/connection.js';
 
   const STORAGE_KEY = 'gambiarra-world-client';
+
+  // Bloco FIXO do protocolo de movimento: o conteúdo vem daqui (o participante
+  // não edita), mas o template controla ONDE ele entra via {{protocolo}}.
+  const PROTOCOL_BLOCK = [
+    'Dê o próximo passo escolhendo UMA direção da bússola:',
+    'N (norte), NE (nordeste), E (leste), SE (sudeste), S (sul), SW (sudoeste), W (oeste), NW (noroeste). Use STAY só para ficar parado.',
+    'Responda em UMA linha, começando com "MOVE:" seguido da direção e um comentário curto.',
+    'Exemplo: MOVE: NE | indo atrás da comida',
+  ].join('\n');
+
+  // Template padrão do prompt — o participante pode reescrever livremente.
+  // Placeholders substituídos a cada pulso: {{objetivo}} {{estrategia}} {{radar}} {{protocolo}}
+  const DEFAULT_PROMPT_TEMPLATE = [
+    'Você controla um agente em uma arena 2D vista de cima (estilo radar/bússola).',
+    'OBJETIVO DO JOGO: {{objetivo}}',
+    'SUA ESTRATÉGIA: {{estrategia}}',
+    '',
+    '{{radar}}',
+    '',
+    '{{protocolo}}',
+    'Sua resposta:',
+  ].join('\n');
   const setStatus = makeStatusSetter('Jogando');
   const EMOJIS = ['🤖','👾','🦊','🐸','🐙','🐵','🦄','🐲','🐱','🦉','🐺','🐢','🐝','🦖','🐧','🦅'];
   const PRESETS = {
@@ -167,6 +220,7 @@
     serverUrl: defaultServerHost(), pin:'', nickname:'',
     runner:'ollama', llmUrl: RUNNERS.ollama.defaultUrl, model:'',
     temperature: 0.4, emoji:'🤖', strategy: PRESETS['Ganancioso'], think: true,
+    promptTemplate: DEFAULT_PROMPT_TEMPLATE,
     // runtime
     participantId:'', objective:'', score:0, pulses:0, manual:false, deciding:false, lastPulse:0,
     save() {
@@ -174,11 +228,14 @@
         serverUrl:this.serverUrl, pin:this.pin, nickname:this.nickname,
         runner:this.runner, llmUrl:this.llmUrl, model:this.model, temperature:this.temperature,
         emoji:this.emoji, strategy:this.strategy, think:this.think,
+        promptTemplate:this.promptTemplate,
       })); } catch(e){}
     },
     load() {
       try { Object.assign(this, JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}')); } catch(e){}
       if (!this.serverUrl) this.serverUrl = defaultServerHost();
+      this.serverUrl = prettyServerHost(this.serverUrl) || defaultServerHost();
+      if (!this.promptTemplate || !this.promptTemplate.trim()) this.promptTemplate = DEFAULT_PROMPT_TEMPLATE;
     },
   };
 
@@ -210,20 +267,35 @@
     return { dir, say };
   }
 
-  function buildPrompt(p, strategy) {
-    return [
-      'Você controla um agente em uma arena 2D vista de cima (estilo radar/bússola).',
-      `OBJETIVO DO JOGO: ${p.objective}`,
-      `SUA ESTRATÉGIA: ${strategy}`,
-      '',
-      p.radar_text,
-      '',
-      'Dê o próximo passo escolhendo UMA direção da bússola:',
-      'N (norte), NE (nordeste), E (leste), SE (sudeste), S (sul), SW (sudoeste), W (oeste), NW (noroeste). Use STAY só para ficar parado.',
-      'Responda em UMA linha, começando com "MOVE:" seguido da direção e um comentário curto.',
-      'Exemplo: MOVE: NE | indo atrás da comida',
-      'Sua resposta:',
-    ].join('\n');
+  // Expande o template do participante a cada pulso. Guarda-corpos: se o
+  // template não tiver {{radar}} (agente cego) ou {{protocolo}} (agente mudo),
+  // os blocos são anexados ao final — a pessoa experimenta sem travar o jogo.
+  function buildPrompt(p, S) {
+    let out = (S.promptTemplate || DEFAULT_PROMPT_TEMPLATE)
+      .replaceAll('{{objetivo}}', p.objective || '')
+      .replaceAll('{{estrategia}}', S.strategy || '')
+      .replaceAll('{{protocolo}}', PROTOCOL_BLOCK);
+    if (out.includes('{{radar}}')) {
+      out = out.replaceAll('{{radar}}', p.radar_text || '');
+    } else {
+      out += '\n\n' + (p.radar_text || '');
+    }
+    if (!(S.promptTemplate || '').includes('{{protocolo}}')) {
+      out += '\n\n' + PROTOCOL_BLOCK;
+    }
+    return out;
+  }
+
+  // Avisos não-bloqueantes sob o textarea do template
+  function refreshTemplateHints() {
+    const el = $('template-hints'); if (!el) return;
+    const t = S.promptTemplate || '';
+    const hints = [];
+    if (!t.includes('{{radar}}')) hints.push('⚠️ sem {{radar}} — o radar será anexado ao final (seu agente não fica cego)');
+    if (!t.includes('{{protocolo}}')) hints.push('⚠️ sem {{protocolo}} — as instruções de movimento serão anexadas ao final');
+    if (!t.includes('{{estrategia}}')) hints.push('ℹ️ sem {{estrategia}} — o campo Estratégia acima será ignorado');
+    el.innerHTML = hints.length ? hints.join('<br>') : '✓ template com todos os placeholders';
+    el.style.color = hints.some(h => h.startsWith('⚠️')) ? 'var(--warning)' : 'var(--text-muted)';
   }
 
   // ============ APP ============
@@ -231,13 +303,25 @@
   client.getRegisterPayload = () => ({ participant_id:S.participantId, nickname:S.nickname, pin:S.pin, runner:S.runner, model:S.model });
   let runner = null;
 
-  const join = () => { client.send({ type:'world_join', participant_id:S.participantId, emoji:S.emoji }); Log.info('Entrou no mundo'); };
+  const join = () => { client.send({ type:'world_join', participant_id:S.participantId, emoji:S.emoji }); Log.info('Entrou no mundo'); reportPromptTemplate(); };
+
+  // Registra o template no servidor (event log de pesquisa): no join e, com
+  // debounce, a cada edição — assim dá para cruzar prompt x desempenho depois.
+  let promptReportTimer = null;
+  function reportPromptTemplate() {
+    if (client.ws?.readyState !== WebSocket.OPEN) return;
+    client.send({ type:'agent_prompt', participant_id:S.participantId, template:S.promptTemplate.slice(0, 4000), is_default: S.promptTemplate === DEFAULT_PROMPT_TEMPLATE });
+  }
+  function schedulePromptReport() {
+    if (promptReportTimer) clearTimeout(promptReportTimer);
+    promptReportTimer = setTimeout(reportPromptTemplate, 2500);
+  }
   const action = (dir, say, pulse) => client.send({ type:'agent_action', participant_id:S.participantId, direction:dir, say, pulse });
 
   async function decide(p) {
     if (S.deciding) return;
     S.deciding = true; setStatus('playing');
-    const prompt = buildPrompt(p, S.strategy);
+    const prompt = buildPrompt(p, S);
     $('io-prompt').textContent = prompt;
     $('io-raw').textContent = '';
     $('io-think').textContent = '';
@@ -332,6 +416,10 @@
     temp.addEventListener('input', ()=>{ S.temperature=parseFloat(temp.value); $('temp-val').textContent=S.temperature.toFixed(1); S.save(); });
     const strat=$('strategy'); strat.value=S.strategy;
     strat.addEventListener('input', ()=>{ S.strategy=strat.value; S.save(); });
+    const tpl=$('prompt-template'); tpl.value=S.promptTemplate;
+    tpl.addEventListener('input', ()=>{ S.promptTemplate=tpl.value; S.save(); refreshTemplateHints(); schedulePromptReport(); });
+    $('btn-template-reset').onclick = ()=>{ S.promptTemplate=DEFAULT_PROMPT_TEMPLATE; tpl.value=DEFAULT_PROMPT_TEMPLATE; S.save(); refreshTemplateHints(); schedulePromptReport(); Log.info('Template restaurado para o padrão'); };
+    refreshTemplateHints();
     const think=$('think'); think.checked = S.think !== false;
     think.addEventListener('change', ()=>{ S.think=think.checked; S.save(); });
   }
