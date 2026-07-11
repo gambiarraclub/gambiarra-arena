@@ -159,6 +159,11 @@ Server config via environment variables (see `server/.env.example`):
 
 ## Adding New Features
 
+**Post-event report (backup, analysis, HTML report):**
+See `docs/reports/README.md` — the full post-event ritual with standard
+queries, reusable chart/SVG helpers in the `gen_encontro-*.py` generators,
+visual verification checklist and known pitfalls.
+
 **New Challenge/Game Mode (START HERE):**
 See `docs/desafios/README.md` — step-by-step recipes with search anchors and
 checkpoints for adding a new render mode (like SVG) or a new interaction mode

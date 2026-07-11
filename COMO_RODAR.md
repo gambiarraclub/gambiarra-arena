@@ -110,6 +110,10 @@ World, o painel **`/control`**. Nada de curl com plateia olhando.
 `export.csv` (métricas), `export-events.csv` (linha do tempo de eventos) e
 `export-all.json` (tudo: sessão, rodadas, métricas, votos, eventos).
 
+> 📖 O ritual completo (backup → análise → relatório HTML) está documentado
+> passo a passo em `docs/reports/README.md` — escrito para um agente de
+> código executar.
+
 **Backup dos dados brutos** (esse é no terminal, mas sem plateia — NÃO pule):
 
 ```bash
