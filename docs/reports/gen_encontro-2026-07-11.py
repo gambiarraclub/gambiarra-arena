@@ -16,6 +16,11 @@ db.row_factory = sqlite3.Row
 S_MAIN = '140a7e40'   # sessão principal (rodadas 1-2)
 S_FINAL = '2c7cf882'  # sessão final (rodada 3)
 
+# Recorte do relatório: dados a partir das 9h — antes disso, testes internos
+# do organizador. Entre ~10h e 11h houve teste de OUTRA plataforma (bots de
+# Minecraft, de Jonathas Vinicius), fora do escopo deste relatório.
+CUT9 = int(datetime.datetime(2026, 7, 11, 9, 0).timestamp() * 1000)
+
 # ---------------- dados ----------------
 def votes_for(sess_prefix, idx):
     return db.execute("""
@@ -34,8 +39,10 @@ def metrics_for(sess_prefix, idx):
 v_r1, v_r2, v_r3 = votes_for(S_MAIN,1), votes_for(S_MAIN,2), votes_for(S_FINAL,1)
 m_r1, m_r2, m_r3 = metrics_for(S_MAIN,1), metrics_for(S_MAIN,2), metrics_for(S_FINAL,1)
 
-nicks = db.execute("SELECT count(DISTINCT nickname) FROM participants").fetchone()[0]
-models = db.execute("SELECT count(DISTINCT model) FROM participants").fetchone()[0]
+# participantes do ENCONTRO: ativos após as 9h (world-only ficam em sessões
+# antigas pela semântica do upsert, então o filtro é por lastSeen, não sessão)
+nicks = db.execute("SELECT count(DISTINCT nickname) FROM participants WHERE lastSeen>=?", (CUT9,)).fetchone()[0]
+models = db.execute("SELECT count(DISTINCT model) FROM participants WHERE lastSeen>=?", (CUT9,)).fetchone()[0]
 voters, total_votes = db.execute("SELECT count(DISTINCT voterHash), count(*) FROM votes").fetchone()
 
 world_final = json.loads(db.execute("SELECT metadata FROM event_logs WHERE eventType='world_stopped'").fetchone()[0])
@@ -49,9 +56,10 @@ peak_time = datetime.datetime.fromtimestamp(peak_row['timestamp']/1000).strftime
 prompt_hackers = db.execute("""
   SELECT json_extract(metadata,'$.nickname') nick, count(*) n
   FROM event_logs WHERE eventType='agent_prompt_changed' AND json_extract(metadata,'$.isDefault')=0
-  GROUP BY actorId ORDER BY n DESC""").fetchall()
+    AND timestamp>=?
+  GROUP BY actorId ORDER BY n DESC""", (CUT9,)).fetchall()
 total_custom = sum(r['n'] for r in prompt_hackers)
-snapshots_count = db.execute("SELECT count(*) FROM event_logs WHERE eventType='world_snapshot'").fetchone()[0]
+snapshots_count = db.execute("SELECT count(*) FROM event_logs WHERE eventType='world_snapshot' AND timestamp>=?", (CUT9,)).fetchone()[0]
 
 # ---------------- log ----------------
 req = collections.Counter(); c429 = 0; dedup = 0; ips = set()
@@ -60,6 +68,7 @@ for line in open(LOG):
     except Exception: continue
     m = d.get('msg','')
     t = datetime.datetime.fromtimestamp(d['time']/1000)
+    if t.hour < 9: continue  # recorte: antes das 9h foram testes internos
     if m == 'incoming request': req[t.strftime('%H:%M')] += 1; ips.add(d.get('req',{}).get('remoteAddress'))
     elif m.startswith('HTTP_429'): c429 += 1
     elif m.startswith('WS_DEDUP'): dedup += 1
@@ -190,6 +199,51 @@ def world_frame_svg(state):
 
 PH_OBJ, PH_RADAR, PH_PROTO = '{{objetivo}}', '{{radar}}', '{{protocolo}}'
 
+# ---------------- matriz modelos × desafios ----------------
+# melhor colocação de cada MODELO em cada desafio (com quem o pilotou)
+model_by_nick = dict(db.execute("SELECT nickname, model FROM participants"))
+# lookup tolerante: 'Bardo-Programador' (world) e 'Bardo Programador' (arena)
+# são a mesma pessoa com pontuação diferente no apelido
+def _norm(s): return re.sub(r'[^a-z0-9]', '', (s or '').lower())
+model_by_norm = {_norm(k): v for k, v in model_by_nick.items()}
+
+def lookup_model(nick):
+    return model_by_nick.get(nick) or model_by_norm.get(_norm(nick), '?')
+
+def challenge_ranks(rows, model_key=None):
+    out = {}
+    for i, r in enumerate(rows):
+        m = r[model_key] if model_key else lookup_model(r['nick'])
+        if m not in out:
+            out[m] = (i + 1, r['nick'])
+    return out
+
+world_scored = [{'nick': s['nickname'], 'total': s['score']} for s in world_scores if s['score'] > 0]
+matrix_challenges = [
+    ('🌍 World', challenge_ranks(world_scored)),
+    ('🎨 R1', challenge_ranks(v_r1, 'model')),
+    ('🎨 R2', challenge_ranks(v_r2, 'model')),
+    ('🎨 R3', challenge_ranks(v_r3, 'model')),
+]
+all_models = sorted(
+    {m for _, ranks in matrix_challenges for m in ranks},
+    key=lambda m: (
+        -sum(1 for _, ranks in matrix_challenges if ranks.get(m, (99,))[0] == 1),  # ouros
+        -sum(1 for _, ranks in matrix_challenges if ranks.get(m, (99,))[0] <= 3),  # pódios
+        min(ranks.get(m, (99,))[0] for _, ranks in matrix_challenges),
+    ))
+
+def matrix_cell(pos_nick):
+    if not pos_nick: return '<td class="num muted">—</td>'
+    pos, nick = pos_nick
+    face = ['🥇','🥈','🥉'][pos-1] if pos <= 3 else f'{pos}º'
+    short = nick if len(nick) <= 16 else nick[:15] + '…'
+    return f'<td class="num">{face} <span class="who">{esc(short)}</span></td>'
+
+matrix_html = '<tr><th>Modelo</th>' + ''.join(f'<th>{esc(t)}</th>' for t, _ in matrix_challenges) + '</tr>'
+for m in all_models:
+    matrix_html += f'<tr><td><code>{esc(m)}</code></td>' + ''.join(matrix_cell(ranks.get(m)) for _, ranks in matrix_challenges) + '</tr>'
+
 # ---------------- montagem ----------------
 medal = ['🥇','🥈','🥉']
 def rank(i): return medal[i] if i < 3 else f'{i+1}º'
@@ -202,13 +256,13 @@ def wtip(r, short=False):
     return f"{r['total']} 🍏" if short else f"{r['nick']} — {r['total']} comidas"
 
 charts = {
- 'activity': timeseries_chart(req, '06:50', '13:15', [
-    ('preparação e ajustes ao vivo', '07:30', 14),
-    ('World: chegada', '11:10', 34),
-    ('fim da partida', '11:30', 14),
-    ('R1', '11:39', 54),
+ 'activity': timeseries_chart(req, '08:55', '13:15', [
+    ('≈10h–11h: Minecraft (outro sistema)', '10:10', 14),
+    ('World: chegada', '11:08', 44),
+    ('fim da partida', '11:30', 74),
+    ('R1', '11:39', 104),
     ('R2', '11:50', 34),
-    ('R3 + premiação', '12:09', 14),
+    ('R3 + premiação', '12:12', 60),
  ]),
  'world': hbar_chart([r for r in world_rows if r['total'] > 0], 'total', wtip,
                      color='var(--series-2)', winner_color='var(--series-2)'),
@@ -228,8 +282,8 @@ tiles = [
 tiles_html = ''.join(f'<div class="tile"><div class="tile-v">{v}</div><div class="tile-l">{l}</div></div>' for v,l in tiles)
 
 timeline = [
- ('06:57', 'Servidor no ar antes do sol esquentar', 'Preparação com banco novo do dia (dev-2026-07-11.db) e o modo evento (servidor buildado, sem watch).'),
- ('07:2x–07:4x', 'Ajustes ao vivo ⚙️', 'A manhã de ensaio revelou (e corrigiu na hora) quatro detalhes: o combobox de modelos que "não abria", o campo de IP mostrando URL completa, os módulos ausentes na porta 5173 e o Placar do World em cima do título — todos mergeados no PR #12 antes do público chegar.'),
+ ('manhã', 'Sobre este recorte 📋', 'Este relatório cobre APENAS a Gambiarra Arena, com dados a partir das 9h (antes disso, testes internos do organizador — que de quebra renderam quatro correções mergeadas antes do público chegar).'),
+ ('≈10h–11h', 'Intervalo Minecraft 🎮', 'A turma testou outra plataforma do encontro: o sistema de Jonathas Vinicius que controla bots dentro do Minecraft. Fica registrado o vale no gráfico de tráfego da Arena — os agentes estavam ocupados em outro mundo (literalmente). Cobertura completa fora deste relatório.'),
  ('11:10–11:30', 'World: a partida oficial 🌍', f'Agentes chegando até o pico de {len(peak_state["agents"])} simultâneos às {peak_time}. Desta vez COM comida (14 no mapa) e placar de verdade: Almir devorou 93, shaolin_matador_de_porco 75, amarante 45. Partida encerrada às 11:30 com o placar gravado.'),
  ('11:31', 'Sessão principal', 'PIN novo, todo mundo dentro — e a estreia da dinâmica do tema do dia: o prompt do agente editável ao vivo, valendo no pulso seguinte.'),
  ('11:38', 'Rodada 1 — a capivara clássica', f'{len(m_r1)} gerações, {sum(r["n"] for r in v_r1)} votos. Empate técnico no topo: EngenheiroDaGambiarra e amarante, 36 pts cada (média 2,77).'),
@@ -346,6 +400,9 @@ table.cmp th, table.cmp td {{ padding:9px 12px; text-align:left; border-bottom:1
 table.cmp th {{ color:var(--muted); font-size:12.5px; text-transform:uppercase; letter-spacing:.06em; }}
 table.cmp .num {{ font-variant-numeric:tabular-nums; }}
 table.cmp .ok {{ color:#0a7a2f; font-weight:650; }}
+table.matrix .who {{ color:var(--muted); font-size:12px; }}
+table.matrix .muted {{ color:var(--muted); }}
+table.matrix td, table.matrix th {{ white-space:nowrap; }}
 @media (prefers-color-scheme: dark) {{ table.cmp .ok {{ color:#54d97c; }} }}
 .curios {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:12px; margin-top:16px; }}
 .curio {{ background:var(--surface-1); border:1px solid var(--border); border-radius:12px; padding:16px; }}
@@ -366,7 +423,7 @@ footer {{ margin-top:64px; color:var(--muted); font-size:13.5px; border-top:1px 
 <header class="hero">
   <div class="kicker">Gambiarra LLM Club · 6º Encontro · Agentes de código com modelos abertos e locais</div>
   <h1>O dia em que o prompt virou jogo</h1>
-  <p class="sub">Relatório do encontro de <strong>11 de julho de 2026</strong>, reconstruído dos registros do servidor central. {nicks} participantes, {models} modelos locais, uma partida de World com placar de verdade, três capivaras dançando frevo — e a estreia da engenharia de prompt ao vivo: editar o cérebro do agente e ver o efeito no pulso seguinte.</p>
+  <p class="sub">Relatório do encontro de <strong>11 de julho de 2026</strong>, reconstruído dos registros do servidor central. {nicks} participantes, {models} modelos locais, uma partida de World com placar de verdade, três capivaras dançando frevo — e a estreia da engenharia de prompt ao vivo: editar o cérebro do agente e ver o efeito no pulso seguinte. <em>Este relatório cobre apenas a Gambiarra Arena (dados a partir das 9h); o teste da plataforma de bots no Minecraft, de Jonathas Vinicius, aconteceu entre ~10h e 11h e merece registro próprio.</em></p>
   <div class="tiles">{tiles_html}</div>
 </header>
 
@@ -387,6 +444,12 @@ footer {{ margin-top:64px; color:var(--muted); font-size:13.5px; border-top:1px 
 <p class="lede">Tema do encontro na prática: o prompt do agente virou um template editável (<code>{PH_OBJ}</code>, <code>{PH_RADAR}</code>, <code>{PH_PROTO}</code>…) que vale no pulso seguinte. {len(prompt_hackers)} participantes salvaram {total_custom} versões customizadas — todas gravadas no event log, cruzáveis com os snapshots do World para estudar o que realmente funcionou.</p>
 <div class="card">
 <table class="cmp"><tr><th>Participante</th><th>versões de prompt</th></tr>{prompt_rows}</table>
+</div>
+
+<h2>🤖 A matriz dos modelos</h2>
+<p class="lede">Quem venceu cada desafio, por modelo — a melhor colocação que cada um alcançou (e quem o pilotava). Os desafios premiam coisas diferentes: o World exige decisão rápida em loop; as capivaras, capricho visual em SVG.</p>
+<div class="card" style="overflow-x:auto">
+<table class="cmp matrix">{matrix_html}</table>
 </div>
 
 <h2>🏆 Rodada 2 — a rodada do Almir</h2>
@@ -413,7 +476,7 @@ footer {{ margin-top:64px; color:var(--muted); font-size:13.5px; border-top:1px 
 <div class="curios">{curios_html}</div>
 
 <footer>
-  <p><strong>Fontes:</strong> banco <code>dev-2026-07-11.db</code> (sessões, rodadas, métricas, votos, event log com {snapshots_count} world_snapshots e {total_custom} prompts customizados), log estruturado <code>server-2026-07-11.log</code> e snapshots de sessão. Relatório gerado em 11/07/2026. 🐹🤖</p>
+  <p><strong>Fontes:</strong> banco <code>dev-2026-07-11.db</code> (sessões, rodadas, métricas, votos, event log com {snapshots_count} world_snapshots e {total_custom} prompts customizados), log estruturado <code>server-2026-07-11.log</code> e snapshots de sessão. <strong>Recorte:</strong> dados a partir das 9h (antes: testes internos); somente a Gambiarra Arena — o teste da plataforma de bots no Minecraft (Jonathas Vinicius, ~10h–11h) não está coberto aqui. Relatório gerado em 11/07/2026. 🐹🤖</p>
 </footer>
 </div>
 
