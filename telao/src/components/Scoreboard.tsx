@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { extractSvg, SvgFitBox } from './SvgRenderer';
 
 interface ParticipantScore {
   participant_id: string;
@@ -25,10 +26,74 @@ interface RoundInfo {
   prompt: string;
 }
 
+// Renders a participant's SVG scaled to fully fit a fixed-height box,
+// without cropping or inner scrollbars (see .svg-contain in index.css)
+function ResultSvg({ content, heightClass }: { content: string; heightClass: string }) {
+  const svg = extractSvg(content);
+
+  if (!svg) {
+    return (
+      <div
+        className={`w-full ${heightClass} flex items-center justify-center bg-[var(--color-midnight)] rounded-lg border border-[var(--color-surface-light)] text-gray-600 font-mono text-sm`}
+      >
+        Nenhum SVG detectado
+      </div>
+    );
+  }
+
+  return (
+    <SvgFitBox
+      svg={svg}
+      className={`svg-contain w-full ${heightClass} bg-white rounded-lg p-2`}
+      fallback={
+        <div
+          className={`w-full ${heightClass} flex items-center justify-center bg-[var(--color-midnight)] rounded-lg border border-yellow-700 text-yellow-500 font-mono text-sm`}
+        >
+          ⚠️ SVG inválido
+        </div>
+      }
+    />
+  );
+}
+
 export default function Scoreboard() {
   const [data, setData] = useState<ScoreboardData | null>(null);
   const [roundInfo, setRoundInfo] = useState<RoundInfo | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showCelebration, setShowCelebration] = useState(false);
+  const newestRevealRef = useRef<HTMLDivElement | null>(null);
+  const prevRevealedRef = useRef<number | null>(null);
+
+  const revealedNow = data?.votingStatus === 'revealed' ? data.revealedCount : 0;
+  const totalNow = data?.scoreboard.length ?? 0;
+  const inRevealMode = data?.votingStatus === 'revealed';
+
+  // Winner celebration: only on the live transition to the final reveal,
+  // so a page opened after the ceremony goes straight to the final results
+  useEffect(() => {
+    if (!inRevealMode || totalNow === 0) return;
+    const prev = prevRevealedRef.current;
+    prevRevealedRef.current = revealedNow;
+    if (prev !== null && prev < totalNow && revealedNow >= totalNow) {
+      setShowCelebration(true);
+      const timer = setTimeout(() => setShowCelebration(false), 15000);
+      return () => clearTimeout(timer);
+    }
+  }, [inRevealMode, revealedNow, totalNow]);
+
+  // Bring the newest revealed card into view as the ceremony progresses
+  useEffect(() => {
+    if (inRevealMode && revealedNow > 0 && revealedNow < totalNow) {
+      newestRevealRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [inRevealMode, revealedNow, totalNow]);
+
+  // Reset scroll when leaving the reveal list (celebration / final results)
+  useEffect(() => {
+    if (inRevealMode && totalNow > 0 && revealedNow >= totalNow) {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, [inRevealMode, revealedNow, totalNow, showCelebration]);
 
   useEffect(() => {
     const fetchScoreboard = async () => {
@@ -196,6 +261,49 @@ export default function Scoreboard() {
     );
   }
 
+  // State: Grand winner spotlight, shown right after the last reveal
+  if (isRevealMode && allRevealed && showCelebration) {
+    const winner = scoreboard[0];
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6 lg:p-10 overflow-auto">
+        <div className="text-center animate-bounce-in max-w-5xl w-full">
+          <div className="text-7xl lg:text-8xl mb-2 animate-float">🏆</div>
+          <h1 className="text-4xl lg:text-6xl font-mono font-black text-neon-yellow tracking-wider mb-2 glitch">
+            GRANDE VENCEDOR
+          </h1>
+          <h2 className="text-5xl lg:text-7xl font-mono font-black text-white my-4">
+            {winner.nickname}
+          </h2>
+          <div className="flex items-center justify-center gap-4 lg:gap-6 mb-6">
+            <div className="flex items-baseline gap-2">
+              <span className="text-4xl lg:text-5xl font-mono font-black text-neon-cyan">
+                {winner.avg_score.toFixed(2)}
+              </span>
+              <span className="text-gray-400 font-body text-xl">média</span>
+            </div>
+            <div className="px-4 py-2 bg-[var(--color-surface)] rounded-lg">
+              <span className="text-gray-300 font-mono text-xl">
+                {winner.votes} voto{winner.votes !== 1 ? 's' : ''}
+              </span>
+            </div>
+          </div>
+          {winner.generated_content && (
+            svgMode ? (
+              <ResultSvg content={winner.generated_content} heightClass="h-[50vh]" />
+            ) : (
+              <div className="text-left text-gray-200 font-mono text-lg whitespace-pre-wrap bg-[var(--color-midnight)] border border-[var(--color-surface-light)] p-6 rounded-lg max-h-[45vh] overflow-auto">
+                {winner.generated_content}
+              </div>
+            )
+          )}
+          <p className="mt-6 text-gray-500 font-body animate-pulse">
+            Resultados completos a seguir...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   // State: All revealed - Final results with chart
   if (isRevealMode && allRevealed) {
     const maxScore = 5;
@@ -285,9 +393,9 @@ export default function Scoreboard() {
                 {participant.generated_content && (
                   <div className="mt-4 pt-4 border-t border-[var(--color-surface-light)]">
                     {svgMode ? (
-                      <div
-                        className="w-full bg-white rounded-lg p-2 max-h-48 overflow-hidden"
-                        dangerouslySetInnerHTML={{ __html: participant.generated_content }}
+                      <ResultSvg
+                        content={participant.generated_content}
+                        heightClass={index === 0 ? 'h-72' : 'h-56'}
                       />
                     ) : (
                       <div className="text-sm text-gray-400 font-mono whitespace-pre-wrap max-h-32 overflow-hidden bg-[var(--color-midnight)] p-3 rounded">
@@ -324,6 +432,11 @@ export default function Scoreboard() {
                           </p>
                         )}
                       </div>
+                      {participant.generated_content && svgMode && (
+                        <div className="w-28 shrink-0">
+                          <ResultSvg content={participant.generated_content} heightClass="h-20" />
+                        </div>
+                      )}
                       <div className="text-right">
                         <div className="text-2xl font-mono font-bold text-neon-cyan">
                           {participant.avg_score.toFixed(2)}
@@ -380,13 +493,15 @@ export default function Scoreboard() {
               const position = scoreboard.findIndex(p => p.participant_id === participant.participant_id);
               const displayPosition = position + 1;
               const isPodium = position < 3;
+              const isNewest = revealIndex === revealedParticipants.length - 1;
 
               return (
                 <div
                   key={participant.participant_id}
+                  ref={isNewest ? newestRevealRef : undefined}
                   className={`arcade-card border-2 rounded-xl p-6 transition-all animate-fade-in-up ${
                     isPodium ? getPositionClass(position) : ''
-                  }`}
+                  } ${isNewest ? 'ring-2 ring-[var(--color-neon-yellow)]' : ''}`}
                   style={{ animationDelay: `${revealIndex * 150}ms`, opacity: 0 }}
                 >
                   <div className="flex flex-col lg:flex-row lg:items-start gap-6">
@@ -437,9 +552,9 @@ export default function Scoreboard() {
                       {participant.generated_content && (
                         <div className="bg-[var(--color-midnight)] rounded-lg p-4 border border-[var(--color-surface-light)]">
                           {svgMode ? (
-                            <div
-                              className="w-full bg-white rounded-lg p-4 max-h-64 overflow-auto"
-                              dangerouslySetInnerHTML={{ __html: participant.generated_content }}
+                            <ResultSvg
+                              content={participant.generated_content}
+                              heightClass={isNewest ? 'h-[40vh]' : 'h-44'}
                             />
                           ) : (
                             <div className="text-gray-300 font-mono text-sm whitespace-pre-wrap max-h-48 overflow-auto">
