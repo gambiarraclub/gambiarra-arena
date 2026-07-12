@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTelaoSocket } from '../hooks/useTelaoSocket';
-import { extractSvg, fitSvg } from './SvgRenderer';
+import { extractSvg, SvgFitBox } from './SvgRenderer';
 
 interface Response {
   participant_id: string;
@@ -74,6 +74,9 @@ function Voting() {
   // screen — that alternation was the 2026-05-23 "flickering".
   const hasDataRef = useRef(false);
 
+  // Latest round, readable from WS callbacks without re-subscribing
+  const roundRef = useRef<Round | null>(null);
+
   // Fetch responses + my votes for a round whose voting is open (one-shot)
   const fetchVotingData = useCallback(async (roundToFetch: Round) => {
     try {
@@ -83,12 +86,17 @@ function Voting() {
         // Always update svgMode
         setSvgMode(data.svgMode);
 
-        // Shuffle responses only once when loading OR when round changed
+        // Shuffle once on first load, then keep the order stable but MERGE
+        // newcomers (late `complete` arrivals) at the end — freezing the
+        // first non-empty list made late finishers unvotable on phones that
+        // had already loaded.
+        const incoming: Response[] = data.responses ?? [];
         setResponses((prevResponses) => {
-          if (prevResponses.length === 0 && data.responses.length > 0) {
-            return shuffleArray(data.responses);
-          }
-          return prevResponses;
+          if (incoming.length === 0) return prevResponses;
+          if (prevResponses.length === 0) return shuffleArray(incoming);
+          const known = new Set(prevResponses.map((r) => r.participant_id));
+          const fresh = incoming.filter((r) => !known.has(r.participant_id));
+          return fresh.length > 0 ? [...prevResponses, ...shuffleArray(fresh)] : prevResponses;
         });
       }
 
@@ -126,6 +134,7 @@ function Voting() {
     });
 
     setRound(latestRound);
+    roundRef.current = latestRound;
     hasDataRef.current = true;
     setError(null);
     setLoading(false);
@@ -143,8 +152,14 @@ function Voting() {
       setLoading(false);
     } else if (msg.type === 'round_state') {
       applyRound(msg.round as Round);
+    } else if (msg.type === 'completion') {
+      // A straggler finished after voting opened — pull it into the list
+      const current = roundRef.current;
+      if (current?.votingStatus === 'open') {
+        fetchVotingData(current);
+      }
     }
-  }, [applyRound]));
+  }, [applyRound, fetchVotingData]));
 
   // Polling fallback (slow): only fills in if WS is down or misses an update
   const fetchData = useCallback(async () => {
@@ -428,9 +443,19 @@ function Voting() {
           {/* Response content */}
           <div className="flex-1 p-4 overflow-auto bg-[var(--color-midnight)]">
             {currentSvg ? (
-              <div
+              <SvgFitBox
+                svg={currentSvg}
                 className="svg-fit w-full h-full flex items-center justify-center bg-white rounded-lg p-3 min-h-[200px]"
-                dangerouslySetInnerHTML={{ __html: fitSvg(currentSvg) }}
+                fallback={
+                  <div>
+                    <div className="mb-3 px-3 py-2 bg-yellow-900/30 border border-yellow-700 rounded text-yellow-400 text-xs font-mono">
+                      ⚠️ O SVG deste participante não pôde ser renderizado. Avalie pela resposta abaixo:
+                    </div>
+                    <div className="whitespace-pre-wrap text-gray-300 font-mono text-xs leading-relaxed">
+                      {currentResponse.generated_content}
+                    </div>
+                  </div>
+                }
               />
             ) : (
               <div className="whitespace-pre-wrap text-gray-300 font-mono text-sm leading-relaxed">

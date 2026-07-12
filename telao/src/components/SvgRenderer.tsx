@@ -1,4 +1,5 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 
 interface SvgRendererProps {
   content: string;
@@ -58,6 +59,104 @@ export function fitSvg(svg: string): string {
   return svg.replace(openTagMatch[0], openTag);
 }
 
+const LEAF_SHAPES = new Set([
+  'rect', 'circle', 'ellipse', 'line', 'path', 'polygon', 'polyline', 'use', 'image',
+]);
+
+/**
+ * Small local models emit malformed attributes — e.g. `linewidth=2/>`, where
+ * the unquoted value swallows the self-closing slash. The shape then parses
+ * as an open container and the REST OF THE DRAWING nests inside it, which SVG
+ * never renders (blank white card, 2026-07-12 fcac-windows case). Reparse
+ * leniently and hoist anything trapped inside a leaf shape back out.
+ */
+export function repairSvg(svg: string): string {
+  if (typeof DOMParser === 'undefined') return svg;
+  try {
+    const doc = new DOMParser().parseFromString(`<body>${svg}</body>`, 'text/html');
+    const root = doc.body.querySelector('svg');
+    if (!root) return svg;
+
+    let changed = false;
+    for (const el of Array.from(root.querySelectorAll('*'))) {
+      if (LEAF_SHAPES.has(el.tagName.toLowerCase()) && el.childNodes.length > 0) {
+        const parent = el.parentNode;
+        if (!parent) continue;
+        const anchor = el.nextSibling;
+        while (el.firstChild) parent.insertBefore(el.firstChild, anchor);
+        changed = true;
+      }
+    }
+
+    return changed ? root.outerHTML : svg;
+  } catch {
+    return svg;
+  }
+}
+
+interface SvgFitBoxProps {
+  svg: string;
+  className: string;
+  /** Skip the blank check while tokens are still streaming */
+  checkBlank?: boolean;
+  /** Rendered instead of the drawing when nothing visible painted */
+  fallback?: ReactNode;
+}
+
+/**
+ * Shared SVG box for telão/voting/scoreboard: repairs + fits the drawing,
+ * then measures what actually painted. If the geometry is empty or lies
+ * entirely outside the viewBox, shows `fallback` instead of a silent white
+ * rectangle the audience can't judge.
+ */
+export function SvgFitBox({ svg, className, checkBlank = true, fallback }: SvgFitBoxProps) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const html = useMemo(() => fitSvg(repairSvg(svg)), [svg]);
+  // Verdict is keyed by the html it was measured on, so a new svg (e.g. the
+  // voting page moving to the next participant) automatically re-renders the
+  // container and re-measures instead of staying stuck on a stale "blank"
+  const [verdict, setVerdict] = useState<{ html: string; blank: boolean } | null>(null);
+  const blank = checkBlank && verdict?.html === html && verdict.blank;
+
+  useEffect(() => {
+    if (!checkBlank) return;
+    const el = containerRef.current?.querySelector('svg');
+    if (!el) {
+      setVerdict({ html, blank: true });
+      return;
+    }
+    try {
+      const box = el.getBBox();
+      let visible = box.width > 0 && box.height > 0;
+      const vb = el.getAttribute('viewBox')?.split(/[\s,]+/).map(Number);
+      if (visible && vb && vb.length === 4 && !vb.some(Number.isNaN)) {
+        // Geometry drawn entirely off-canvas is just as blank as no geometry
+        visible =
+          box.x < vb[0] + vb[2] &&
+          box.x + box.width > vb[0] &&
+          box.y < vb[1] + vb[3] &&
+          box.y + box.height > vb[1];
+      }
+      setVerdict({ html, blank: !visible });
+    } catch {
+      // getBBox unsupported/detached — assume it rendered
+      setVerdict({ html, blank: false });
+    }
+  }, [html, checkBlank]);
+
+  if (blank && fallback) {
+    return <>{fallback}</>;
+  }
+
+  return (
+    <div
+      ref={containerRef}
+      className={className}
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  );
+}
+
 function SvgRenderer({ content, isGenerating }: SvgRendererProps) {
   const svgContent = useMemo(() => extractSvg(content), [content]);
 
@@ -105,9 +204,17 @@ function SvgRenderer({ content, isGenerating }: SvgRendererProps) {
         )}
       </div>
 
-      <div
+      <SvgFitBox
+        svg={svgContent}
+        checkBlank={!isGenerating}
         className="svg-fit flex items-center justify-center bg-white rounded p-4 min-h-[200px]"
-        dangerouslySetInnerHTML={{ __html: fitSvg(svgContent) }}
+        fallback={
+          <div className="flex items-center justify-center bg-yellow-900/20 border border-yellow-700 rounded p-4 min-h-[200px]">
+            <span className="text-yellow-500 text-sm font-mono text-center">
+              ⚠️ SVG recebido, mas nada visível ao renderizar
+            </span>
+          </div>
+        }
       />
 
       {/* Debug toggles */}
