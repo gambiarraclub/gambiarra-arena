@@ -767,6 +767,75 @@ export class WebSocketHub {
   }
 
   /**
+   * Persist Metrics from the in-memory token buffer for participants that
+   * streamed tokens but whose `complete` message never arrived (client crash,
+   * WS drop). Without this, anyone in that state is invisible to voting even
+   * though the audience watched them generate. Called when a round stops.
+   */
+  async flushPendingMetrics(roundId: string): Promise<number> {
+    const round = await this.prisma.round.findUnique({ where: { id: roundId } });
+    if (!round) return 0;
+
+    const existing = await this.prisma.metrics.findMany({
+      where: { roundId },
+      select: { participantId: true },
+    });
+    const hasMetrics = new Set(existing.map((m) => m.participantId));
+
+    // The buffer can hold entries from other sessions with the same round
+    // index; only flush participants that belong to this round's session
+    const participants = await this.prisma.participant.findMany({
+      where: { sessionId: round.sessionId },
+      select: { id: true },
+    });
+    const sessionParticipants = new Set(participants.map((p) => p.id));
+
+    const now = new Date();
+    let flushed = 0;
+
+    for (const [participantId, rounds] of this.tokenBuffer) {
+      if (hasMetrics.has(participantId) || !sessionParticipants.has(participantId)) continue;
+
+      const tokens = rounds.get(round.index);
+      if (!tokens || tokens.length === 0) continue;
+
+      const firstTokenAt = this.firstTokenTime.get(participantId)?.get(round.index) ?? null;
+      const ttftMs = round.startedAt && firstTokenAt
+        ? firstTokenAt.getTime() - round.startedAt.getTime()
+        : null;
+      const durationMs = round.startedAt ? now.getTime() - round.startedAt.getTime() : 0;
+      const generationMs = firstTokenAt ? now.getTime() - firstTokenAt.getTime() : 0;
+      const tpsAvg = generationMs > 0 ? (tokens.length / generationMs) * 1000 : null;
+
+      try {
+        await this.prisma.metrics.create({
+          data: {
+            roundId,
+            participantId,
+            tokens: tokens.length,
+            latencyFirstTokenMs: ttftMs !== null ? Math.round(ttftMs) : null,
+            durationMs: Math.round(durationMs),
+            tpsAvg,
+            generatedContent: tokens.join(''),
+            generationStartedAt: firstTokenAt ?? round.startedAt,
+            generationEndedAt: now,
+            firstTokenAt,
+          },
+        });
+        flushed++;
+        this.logger.warn(
+          { participantId, roundId, tokens: tokens.length },
+          'Flushed buffered tokens to metrics (complete message never arrived)'
+        );
+      } catch (error) {
+        this.logger.error({ error, participantId, roundId }, 'Failed to flush buffered metrics');
+      }
+    }
+
+    return flushed;
+  }
+
+  /**
    * Disconnect all participants (used when creating a new session)
    */
   disconnectAllParticipants(reason: string = 'Session ended') {

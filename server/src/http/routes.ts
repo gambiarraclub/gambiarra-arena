@@ -361,6 +361,13 @@ export async function setupRoutes(
   app.post('/rounds/stop', async (request, reply) => {
     const body = StopRoundSchema.parse(request.body);
 
+    // Rescue participants whose `complete` never arrived: persist their
+    // buffered tokens as metrics so they show up in the voting page
+    const flushed = await hub.flushPendingMetrics(body.roundId);
+    if (flushed > 0) {
+      app.log.warn({ roundId: body.roundId, flushed }, 'Persisted metrics from token buffer at round stop');
+    }
+
     const round = await roundManager.stopRound(body.roundId);
 
     return round;
