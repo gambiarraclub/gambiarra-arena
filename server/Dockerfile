@@ -2,8 +2,9 @@ FROM node:20-alpine AS builder
 
 WORKDIR /monorepo
 
-# Install pnpm (specific version to match lockfile)
-RUN npm install -g pnpm@8.11.0
+# Install pnpm (specific version to match lockfile) and OpenSSL for Prisma engine detection
+RUN npm install -g pnpm@9.12.0 && \
+    apk add --no-cache openssl-dev openssl
 
 # Copy monorepo workspace files
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
@@ -30,7 +31,7 @@ FROM node:20-alpine
 WORKDIR /monorepo
 
 # Install pnpm (specific version to match lockfile), wget for healthcheck, and OpenSSL for Prisma
-RUN npm install -g pnpm@8.11.0 && \
+RUN npm install -g pnpm@9.12.0 && \
     apk add --no-cache wget openssl-dev openssl
 
 # Copy monorepo workspace files
@@ -56,4 +57,4 @@ WORKDIR /monorepo/server
 EXPOSE 3000
 
 # Run migrations and start
-CMD ["sh", "-c", "pnpx prisma migrate deploy && pnpm seed && pnpm dev && node dist/index.js"]
+CMD ["sh", "-c", "pnpm exec prisma migrate deploy && pnpm seed && pnpm dev && node dist/index.js"]

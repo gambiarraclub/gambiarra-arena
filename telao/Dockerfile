@@ -3,7 +3,7 @@ FROM node:20-alpine AS builder
 WORKDIR /monorepo
 
 # Install pnpm (specific version to match lockfile)
-RUN npm install -g pnpm@8.11.0
+RUN npm install -g pnpm@9.12.0
 
 # Copy monorepo workspace files
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
