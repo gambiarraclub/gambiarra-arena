@@ -3,6 +3,9 @@
 export function defaultServerHost() {
   // Quando o próprio servidor da arena serve a página, pré-preenche com o host
   // que a pessoa já digitou na barra de endereço.
+  // Por túnel https (ngrok), não há porta 3000: guarda a origem inteira para
+  // buildWsUrl montar wss://host/ws.
+  if (location.protocol === 'https:' && location.hostname) return location.origin;
   if (location.protocol.startsWith('http') && location.hostname) return location.hostname;
   return 'localhost';
 }
@@ -31,6 +34,7 @@ export function prettyServerHost(input) {
   const s = (input || '').trim();
   if (!s) return s;
   const m = s.match(/^(?:wss?|https?):\/\/([^\/:\s]+)(?::(\d+))?/i);
+  if (m && !m[2] && /^(wss|https):/i.test(s)) return `https://${m[1]}`;
   if (m) return m[2] && m[2] !== '3000' ? `${m[1]}:${m[2]}` : m[1];
   return s.replace(/\/.*$/, '');
 }
@@ -44,6 +48,8 @@ export function buildWsUrl(input) {
   if (/^https?:\/\//i.test(s)) {
     try {
       const u = new URL(s); const pr = u.protocol === 'https:' ? 'wss' : 'ws';
+      // https sem porta é túnel (ngrok): fica na 443 padrão.
+      if (pr === 'wss' && !u.port) return `wss://${u.hostname}/ws`;
       return `${pr}://${u.hostname}:${u.port || 3000}/ws`;
     } catch (e) { /* fall through */ }
   }
